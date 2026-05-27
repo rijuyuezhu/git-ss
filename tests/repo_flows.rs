@@ -145,6 +145,116 @@ fn upload_ref_rejects_existing_snapshot_branch() {
 }
 
 #[test]
+fn list_displays_snapshot_metadata() {
+    let (_temp, work_path, _remote_path, repo) = create_repo_with_bare_origin();
+    let source_commit = repo
+        .head()
+        .expect("head")
+        .peel_to_commit()
+        .expect("source commit")
+        .id()
+        .to_string();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "list-demo", "HEAD"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .output()
+        .expect("run list");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let row = stdout
+        .lines()
+        .find(|line| line.starts_with("list-demo\t"))
+        .expect("list-demo row");
+    let columns = row.split('\t').collect::<Vec<_>>();
+    assert_eq!(columns[0], "list-demo");
+    assert_eq!(columns[2], "ref");
+    assert_eq!(columns[3], "HEAD");
+    assert_eq!(columns[4], source_commit);
+    assert_eq!(columns[5], "refs/remotes/origin/gitss/list-demo");
+}
+
+#[test]
+fn list_prunes_deleted_remote_snapshots() {
+    let (_temp, work_path, remote_path, _repo) = create_repo_with_bare_origin();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "prune-demo", "HEAD"])
+        .assert()
+        .success();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("prune-demo"));
+
+    let remote_repo = git2::Repository::open_bare(&remote_path).expect("open bare remote");
+    remote_repo
+        .find_reference("refs/heads/gitss/prune-demo")
+        .expect("remote snapshot ref")
+        .delete()
+        .expect("delete remote snapshot ref");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("prune-demo").not());
+}
+
+#[test]
+fn list_warns_for_malformed_snapshot_metadata() {
+    let (_temp, work_path, remote_path, repo) = create_repo_with_bare_origin();
+    let source_commit = repo
+        .head()
+        .expect("head")
+        .peel_to_commit()
+        .expect("source commit");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "seed", "HEAD"])
+        .assert()
+        .success();
+
+    let remote_repo = git2::Repository::open_bare(&remote_path).expect("open bare remote");
+    remote_repo
+        .reference(
+            "refs/heads/gitss/malformed",
+            source_commit.id(),
+            true,
+            "malformed snapshot",
+        )
+        .expect("malformed ref");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("malformed"))
+        .stdout(predicate::str::contains("WARN"));
+}
+
+#[test]
 fn upload_workdir_includes_untracked_nonignored_files() {
     let (_temp, work_path, remote_path, _repo) = create_repo_with_bare_origin();
     std::fs::write(work_path.join("scratch.txt"), "scratch\n").expect("write scratch file");

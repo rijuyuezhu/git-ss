@@ -35,12 +35,14 @@ fn include_ignored_is_rejected_for_ref_uploads() {
 }
 
 #[test]
-fn list_demo_returns_not_implemented() {
+fn list_requires_git_repository() {
+    let temp = tempfile::tempdir().expect("tempdir");
     let mut cmd = Command::cargo_bin("git-ss").expect("binary exists");
-    cmd.arg("list")
+    cmd.current_dir(temp.path())
+        .arg("list")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("list is not implemented yet"));
+        .stderr(predicate::str::contains("not inside a Git repository"));
 }
 
 #[test]

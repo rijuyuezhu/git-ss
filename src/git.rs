@@ -2,8 +2,8 @@ use std::path::Path;
 
 use chrono::Local;
 use git2::{
-    Cred, CredentialType, Direction, ErrorCode, IndexAddOption, PushOptions, RemoteCallbacks,
-    Repository, Signature,
+    Cred, CredentialType, Direction, ErrorCode, FetchOptions, FetchPrune, IndexAddOption,
+    PushOptions, RemoteCallbacks, Repository, Signature,
 };
 use thiserror::Error;
 
@@ -38,6 +38,14 @@ pub struct UploadResult {
     pub id: String,
     pub remote_ref: String,
     pub commit: git2::Oid,
+}
+
+#[derive(Debug)]
+pub struct ListedSnapshot {
+    pub id: String,
+    pub remote_ref: String,
+    pub commit: git2::Oid,
+    pub metadata: Result<SnapshotMetadata, String>,
 }
 
 pub fn discover_repo(start: &Path) -> Result<Repository, GitSsError> {
@@ -170,6 +178,44 @@ pub fn upload_workdir_snapshot(
         remote_ref,
         commit: snapshot_commit,
     })
+}
+
+pub fn list_snapshots(
+    repo: &Repository,
+    remote_name: &str,
+) -> Result<Vec<ListedSnapshot>, GitSsError> {
+    let mut remote = resolve_remote(repo, remote_name)?;
+    let refspec = format!("+refs/heads/gitss/*:refs/remotes/{remote_name}/gitss/*");
+    let refspecs = [refspec.as_str()];
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.remote_callbacks(remote_callbacks(repo)?);
+    fetch_options.prune(FetchPrune::On);
+    remote.fetch(&refspecs, Some(&mut fetch_options), Some("git-ss list"))?;
+
+    let prefix = format!("refs/remotes/{remote_name}/gitss/");
+    let glob = format!("{prefix}*");
+    let mut snapshots = Vec::new();
+    for reference in repo.references_glob(&glob)? {
+        let reference = reference?;
+        let name = reference.name()?;
+        let remote_ref = name.to_owned();
+        let id = name.strip_prefix(&prefix).unwrap_or(name).to_owned();
+        let commit = reference.peel_to_commit()?;
+        let metadata = commit
+            .message()
+            .map_err(|err| err.to_string())
+            .and_then(|message| metadata::parse_metadata(message).map_err(|err| err.to_string()));
+
+        snapshots.push(ListedSnapshot {
+            id,
+            remote_ref,
+            commit: commit.id(),
+            metadata,
+        });
+    }
+
+    snapshots.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(snapshots)
 }
 
 fn remote_ref_exists(
