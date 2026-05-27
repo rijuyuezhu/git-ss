@@ -1,0 +1,18 @@
+[package]
+name = "git-ss"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A Git plugin for uploading and downloading temporary snapshot branches."
+
+[[bin]]
+name = "git-ss"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
