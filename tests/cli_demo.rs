@@ -22,6 +22,17 @@ fn upload_workdir_demo_returns_not_implemented() {
 }
 
 #[test]
+fn include_ignored_is_rejected_for_ref_uploads() {
+    let mut cmd = Command::cargo_bin("git-ss").expect("binary exists");
+    cmd.args(["upload", "--include-ignored", "HEAD"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "--include-ignored can only be used with upload workdir",
+        ));
+}
+
+#[test]
 fn list_demo_returns_not_implemented() {
     let mut cmd = Command::cargo_bin("git-ss").expect("binary exists");
     cmd.arg("list")

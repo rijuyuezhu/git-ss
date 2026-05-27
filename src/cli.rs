@@ -32,6 +32,22 @@ pub struct UploadArgs {
     pub target: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UploadTarget<'a> {
+    Workdir,
+    Ref(&'a str),
+}
+
+impl UploadArgs {
+    pub fn parsed_target(&self) -> UploadTarget<'_> {
+        if self.target == "workdir" {
+            UploadTarget::Workdir
+        } else {
+            UploadTarget::Ref(&self.target)
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct RemoteArgs {
     #[arg(long, default_value = "origin")]
