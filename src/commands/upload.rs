@@ -2,7 +2,7 @@ use chrono::Local;
 
 use crate::{
     cli::{UploadArgs, UploadTarget},
-    git::{SnapshotUpload, discover_repo, upload_ref_snapshot},
+    git::{SnapshotUpload, discover_repo, upload_ref_snapshot, upload_workdir_snapshot},
     metadata::format_default_id,
 };
 
@@ -24,7 +24,23 @@ pub fn run(args: UploadArgs) -> anyhow::Result<()> {
     }
 
     match parsed_target {
-        UploadTarget::Workdir => anyhow::bail!("upload workdir is not implemented yet"),
+        UploadTarget::Workdir => {
+            let id = id.unwrap_or_else(|| format_default_id(Local::now().fixed_offset()));
+            let current_dir = std::env::current_dir()?;
+            let repo = discover_repo(&current_dir)?;
+            let result = upload_workdir_snapshot(
+                &repo,
+                SnapshotUpload {
+                    id: &id,
+                    remote: &remote,
+                    source: "HEAD",
+                    include_ignored,
+                },
+            )?;
+
+            println!("{}", result.id);
+            Ok(())
+        }
         UploadTarget::Ref(source) => {
             let id = id.unwrap_or_else(|| format_default_id(Local::now().fixed_offset()));
             let current_dir = std::env::current_dir()?;

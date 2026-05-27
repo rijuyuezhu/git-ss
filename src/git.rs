@@ -2,7 +2,8 @@ use std::path::Path;
 
 use chrono::Local;
 use git2::{
-    Cred, CredentialType, Direction, ErrorCode, PushOptions, RemoteCallbacks, Repository, Signature,
+    Cred, CredentialType, Direction, ErrorCode, IndexAddOption, PushOptions, RemoteCallbacks,
+    Repository, Signature,
 };
 use thiserror::Error;
 
@@ -106,8 +107,63 @@ pub fn upload_ref_snapshot(
 
     let temp_ref = format!("refs/gitss/tmp/{}", input.id);
     repo.reference(&temp_ref, snapshot_commit, true, "git-ss snapshot upload")?;
+    push_temp_ref(repo, input.remote, &temp_ref, &remote_ref)?;
 
-    push_ref(repo, input.remote, &temp_ref, &remote_ref)?;
+    Ok(UploadResult {
+        id: input.id.to_owned(),
+        remote_ref,
+        commit: snapshot_commit,
+    })
+}
+
+pub fn upload_workdir_snapshot(
+    repo: &Repository,
+    input: SnapshotUpload<'_>,
+) -> Result<UploadResult, GitSsError> {
+    metadata::validate_id(input.id).map_err(|_| GitSsError::InvalidId(input.id.to_owned()))?;
+    let head_id = require_head(repo)?;
+
+    resolve_remote(repo, input.remote)?;
+    let remote_ref = format!("refs/heads/gitss/{}", input.id);
+    if remote_ref_exists(repo, input.remote, &remote_ref)? {
+        return Err(GitSsError::RemoteBranchExists(remote_ref));
+    }
+
+    let head_commit = repo.find_commit(head_id)?;
+    let mut index = repo.index()?;
+    index.update_all(["*"].iter(), None)?;
+    let add_option = if input.include_ignored {
+        IndexAddOption::FORCE
+    } else {
+        IndexAddOption::DEFAULT
+    };
+    index.add_all(["*"].iter(), add_option, None)?;
+    let tree_id = index.write_tree_to(repo)?;
+    let tree = repo.find_tree(tree_id)?;
+    let signature = snapshot_signature(repo)?;
+    let metadata = SnapshotMetadata {
+        id: input.id.to_owned(),
+        kind: UploadKind::Workdir,
+        source: "HEAD".to_owned(),
+        source_commit: head_commit.id().to_string(),
+        created_at: Local::now().fixed_offset(),
+        remote: input.remote.to_owned(),
+        include_ignored: input.include_ignored,
+        tool_version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    let message = metadata.to_commit_message();
+    let snapshot_commit = repo.commit(
+        None,
+        &signature,
+        &signature,
+        &message,
+        &tree,
+        &[&head_commit],
+    )?;
+
+    let temp_ref = format!("refs/gitss/tmp/{}", input.id);
+    repo.reference(&temp_ref, snapshot_commit, true, "git-ss snapshot upload")?;
+    push_temp_ref(repo, input.remote, &temp_ref, &remote_ref)?;
 
     Ok(UploadResult {
         id: input.id.to_owned(),
@@ -159,6 +215,26 @@ fn push_ref(
         return Err(GitSsError::Git(git2::Error::from_str(&message)));
     }
 
+    Ok(())
+}
+
+fn push_temp_ref(
+    repo: &Repository,
+    remote_name: &str,
+    temp_ref: &str,
+    remote_ref: &str,
+) -> Result<(), GitSsError> {
+    let push_result = push_ref(repo, remote_name, temp_ref, remote_ref);
+    let cleanup_result = delete_reference(repo, temp_ref);
+
+    push_result?;
+    cleanup_result?;
+    Ok(())
+}
+
+fn delete_reference(repo: &Repository, refname: &str) -> Result<(), GitSsError> {
+    let mut reference = repo.find_reference(refname)?;
+    reference.delete()?;
     Ok(())
 }
 

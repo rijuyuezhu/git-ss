@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
 use git_ss::git::{discover_repo, require_head, resolve_remote};
@@ -109,6 +109,7 @@ fn upload_ref_creates_snapshot_branch_in_local_bare_remote() {
     assert!(message.contains("Git-SS-Id: ref-demo"));
     assert!(message.contains("Git-SS-Type: ref"));
     assert!(message.contains("Git-SS-Source: HEAD"));
+    assert!(repo.find_reference("refs/gitss/tmp/ref-demo").is_err());
 }
 
 #[test]
@@ -143,6 +144,102 @@ fn upload_ref_rejects_existing_snapshot_branch() {
         ));
 }
 
+#[test]
+fn upload_workdir_includes_untracked_nonignored_files() {
+    let (_temp, work_path, remote_path, _repo) = create_repo_with_bare_origin();
+    std::fs::write(work_path.join("scratch.txt"), "scratch\n").expect("write scratch file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "workdir-demo", "workdir"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("workdir-demo\n"));
+
+    with_remote_snapshot_commit(&remote_path, "workdir-demo", |snapshot_commit| {
+        let snapshot_tree = snapshot_commit.tree().expect("snapshot tree");
+        let message = snapshot_commit.message().expect("snapshot message");
+
+        assert!(snapshot_tree.get_name("scratch.txt").is_some());
+        assert!(message.contains("Git-SS-Type: workdir"));
+        assert!(message.contains("Git-SS-Include-Ignored: false"));
+    });
+    assert!(_repo.find_reference("refs/gitss/tmp/workdir-demo").is_err());
+}
+
+#[test]
+fn upload_workdir_excludes_ignored_files_by_default() {
+    let (_temp, work_path, remote_path, repo) = create_repo_with_bare_origin();
+    std::fs::write(work_path.join(".gitignore"), "ignored.txt\n").expect("write gitignore");
+    commit_paths(&repo, &[Path::new(".gitignore")], "ignore ignored.txt");
+    std::fs::write(work_path.join("ignored.txt"), "ignored\n").expect("write ignored file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "ignored-default", "workdir"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("ignored-default\n"));
+
+    with_remote_snapshot_commit(&remote_path, "ignored-default", |snapshot_commit| {
+        let snapshot_tree = snapshot_commit.tree().expect("snapshot tree");
+
+        assert!(snapshot_tree.get_name("ignored.txt").is_none());
+    });
+}
+
+#[test]
+fn upload_workdir_include_ignored_includes_ignored_files() {
+    let (_temp, work_path, remote_path, repo) = create_repo_with_bare_origin();
+    std::fs::write(work_path.join(".gitignore"), "ignored.txt\n").expect("write gitignore");
+    commit_paths(&repo, &[Path::new(".gitignore")], "ignore ignored.txt");
+    std::fs::write(work_path.join("ignored.txt"), "ignored\n").expect("write ignored file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args([
+            "upload",
+            "--id",
+            "ignored-included",
+            "--include-ignored",
+            "workdir",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::eq("ignored-included\n"));
+
+    with_remote_snapshot_commit(&remote_path, "ignored-included", |snapshot_commit| {
+        let snapshot_tree = snapshot_commit.tree().expect("snapshot tree");
+        let message = snapshot_commit.message().expect("snapshot message");
+
+        assert!(snapshot_tree.get_name("ignored.txt").is_some());
+        assert!(message.contains("Git-SS-Include-Ignored: true"));
+    });
+}
+
+#[test]
+fn upload_workdir_reflects_tracked_deletions() {
+    let (_temp, work_path, remote_path, _repo) = create_repo_with_bare_origin();
+    std::fs::remove_file(work_path.join("file.txt")).expect("remove tracked file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "deleted-tracked", "workdir"])
+        .assert()
+        .success()
+        .stdout(predicate::eq("deleted-tracked\n"));
+
+    with_remote_snapshot_commit(&remote_path, "deleted-tracked", |snapshot_commit| {
+        let snapshot_tree = snapshot_commit.tree().expect("snapshot tree");
+
+        assert!(snapshot_tree.get_name("file.txt").is_none());
+    });
+}
+
 fn expect_err<T, E>(result: Result<T, E>, message: &str) -> E {
     match result {
         Ok(_) => panic!("{message}"),
@@ -155,6 +252,7 @@ fn create_initial_commit(repo: &git2::Repository, work_path: &Path) -> git2::Oid
 
     let mut index = repo.index().expect("repo index");
     index.add_path(Path::new("file.txt")).expect("add file");
+    index.write().expect("persist index");
     let tree_id = index.write_tree().expect("write tree");
     let tree = repo.find_tree(tree_id).expect("find tree");
     let signature = git2::Signature::now("Test User", "test@example.com").expect("signature");
@@ -168,4 +266,60 @@ fn create_initial_commit(repo: &git2::Repository, work_path: &Path) -> git2::Oid
         &[],
     )
     .expect("initial commit")
+}
+
+fn create_repo_with_bare_origin() -> (tempfile::TempDir, PathBuf, PathBuf, git2::Repository) {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let remote_path = temp.path().join("remote.git");
+    git2::Repository::init_bare(&remote_path).expect("bare remote init");
+
+    let work_path = temp.path().join("work");
+    let repo = git2::Repository::init(&work_path).expect("work repo init");
+    create_initial_commit(&repo, &work_path);
+
+    let remote_path_str = remote_path.to_str().expect("remote path is utf-8");
+    repo.remote("origin", remote_path_str)
+        .expect("origin remote");
+
+    (temp, work_path, remote_path, repo)
+}
+
+fn commit_paths(repo: &git2::Repository, paths: &[&Path], message: &str) -> git2::Oid {
+    let mut index = repo.index().expect("repo index");
+    for path in paths {
+        index.add_path(path).expect("add path");
+    }
+    index.write().expect("persist index");
+    let tree_id = index.write_tree().expect("write tree");
+    let tree = repo.find_tree(tree_id).expect("find tree");
+    let signature = git2::Signature::now("Test User", "test@example.com").expect("signature");
+    let parent = repo
+        .head()
+        .expect("head")
+        .peel_to_commit()
+        .expect("parent commit");
+
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        message,
+        &tree,
+        &[&parent],
+    )
+    .expect("commit paths")
+}
+
+fn with_remote_snapshot_commit<T>(
+    remote_path: &Path,
+    id: &str,
+    assert_commit: impl FnOnce(&git2::Commit<'_>) -> T,
+) -> T {
+    let remote_repo = git2::Repository::open_bare(remote_path).expect("open bare remote");
+    let snapshot_ref = remote_repo
+        .find_reference(&format!("refs/heads/gitss/{id}"))
+        .expect("snapshot branch exists");
+    let commit = snapshot_ref.peel_to_commit().expect("snapshot commit");
+
+    assert_commit(&commit)
 }

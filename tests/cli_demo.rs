@@ -13,14 +13,14 @@ fn help_mentions_core_commands() {
 }
 
 #[test]
-fn upload_workdir_demo_returns_not_implemented() {
+fn upload_workdir_requires_git_repository() {
+    let temp = tempfile::tempdir().expect("tempdir");
     let mut cmd = Command::cargo_bin("git-ss").expect("binary exists");
-    cmd.args(["upload", "workdir"])
+    cmd.current_dir(temp.path())
+        .args(["upload", "workdir"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains(
-            "upload workdir is not implemented yet",
-        ));
+        .stderr(predicate::str::contains("not inside a Git repository"));
 }
 
 #[test]
