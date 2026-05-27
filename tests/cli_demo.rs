@@ -18,7 +18,9 @@ fn upload_workdir_demo_returns_not_implemented() {
     cmd.args(["upload", "workdir"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("upload is not implemented yet"));
+        .stderr(predicate::str::contains(
+            "upload workdir is not implemented yet",
+        ));
 }
 
 #[test]
