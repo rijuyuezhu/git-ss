@@ -3,7 +3,11 @@ name = "git-ss"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "A Git plugin for uploading and downloading temporary snapshot branches."
+description = "A Git plugin for sharing temporary snapshot branches."
+repository = "https://github.com/rijuyuezhu/git-ss"
+readme = "README.md"
+keywords = ["git", "snapshot", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "git-ss"

@@ -1,3 +1,5 @@
+//! Command handler for uploading snapshot branches.
+
 use chrono::Local;
 
 use crate::{
@@ -6,6 +8,7 @@ use crate::{
     metadata::format_default_id,
 };
 
+/// Uploads either an existing ref snapshot or a working-directory snapshot.
 pub fn run(args: UploadArgs) -> anyhow::Result<()> {
     let UploadArgs {
         remote,

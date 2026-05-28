@@ -1,9 +1,12 @@
+//! Command handler for listing remote snapshot branches.
+
 use crate::{
     cli::RemoteArgs,
     git::{discover_repo, list_snapshots},
     metadata::UploadKind,
 };
 
+/// Fetches snapshot refs from the selected remote and prints a tabular listing.
 pub fn run(args: RemoteArgs) -> anyhow::Result<()> {
     let current_dir = std::env::current_dir()?;
     let repo = discover_repo(&current_dir)?;

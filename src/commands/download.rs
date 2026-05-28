@@ -1,8 +1,11 @@
+//! Command handler for downloading snapshot branches.
+
 use crate::{
     cli::DownloadArgs,
     git::{discover_repo, download_snapshot},
 };
 
+/// Downloads a snapshot and checks it out as a detached HEAD.
 pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
     let current_dir = std::env::current_dir()?;
     let repo = discover_repo(&current_dir)?;

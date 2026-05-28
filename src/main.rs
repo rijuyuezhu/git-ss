@@ -1,7 +1,10 @@
+//! Binary entry point for the `git-ss` Git plugin.
+
 use clap::Parser;
 
 use git_ss::cli::{Cli, Command};
 
+/// Parses command-line arguments and dispatches to the selected subcommand.
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 

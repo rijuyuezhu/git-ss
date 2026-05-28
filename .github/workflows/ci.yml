@@ -39,6 +39,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all-targets --all-features
 
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo doc --no-deps --document-private-items
+
   musl-release-build:
     runs-on: ubuntu-latest
     steps:
@@ -54,7 +63,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [fmt, clippy, test, musl-release-build]
+    needs: [fmt, clippy, test, docs, musl-release-build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
