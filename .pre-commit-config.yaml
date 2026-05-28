@@ -6,13 +6,13 @@ repos:
         entry: cargo fmt --check
         language: system
         pass_filenames: false
-        types: [rust]
+        always_run: true
       - id: cargo-clippy
         name: cargo clippy
         entry: cargo clippy --all-targets --all-features -- -D warnings
         language: system
         pass_filenames: false
-        types: [rust]
+        always_run: true
       - id: cargo-doc
         name: cargo doc
         entry: bash -c 'RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items'
