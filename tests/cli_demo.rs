@@ -46,10 +46,12 @@ fn list_requires_git_repository() {
 }
 
 #[test]
-fn download_demo_returns_not_implemented() {
+fn download_requires_git_repository() {
+    let temp = tempfile::tempdir().expect("tempdir");
     let mut cmd = Command::cargo_bin("git-ss").expect("binary exists");
-    cmd.args(["download", "20260528-153012"])
+    cmd.current_dir(temp.path())
+        .args(["download", "20260528-153012"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("download is not implemented yet"));
+        .stderr(predicate::str::contains("not inside a Git repository"));
 }

@@ -255,6 +255,124 @@ fn list_warns_for_malformed_snapshot_metadata() {
 }
 
 #[test]
+fn download_refuses_dirty_worktree_without_force() {
+    let (_temp, work_path, _remote_path, _repo) = create_repo_with_bare_origin();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "download-dirty", "HEAD"])
+        .assert()
+        .success();
+    std::fs::write(work_path.join("file.txt"), "local changes\n").expect("dirty file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["download", "download-dirty"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("working tree has local changes"));
+}
+
+#[test]
+fn download_force_checks_out_snapshot_detached() {
+    let (_temp, work_path, _remote_path, _repo) = create_repo_with_bare_origin();
+    std::fs::write(work_path.join("server.txt"), "from server\n").expect("write server file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "download-force", "workdir"])
+        .assert()
+        .success();
+    std::fs::remove_file(work_path.join("server.txt")).expect("remove server file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["download", "--force", "download-force"])
+        .assert()
+        .success();
+
+    let restored = std::fs::read_to_string(work_path.join("server.txt")).expect("server file");
+    assert_eq!(restored, "from server\n");
+    let repo = git2::Repository::open(&work_path).expect("repo open");
+    assert!(!repo.head().expect("head").is_branch());
+}
+
+#[test]
+fn download_rejects_deleted_remote_snapshot_with_stale_tracking_ref() {
+    let (_temp, work_path, remote_path, _repo) = create_repo_with_bare_origin();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "stale-download", "HEAD"])
+        .assert()
+        .success();
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("stale-download"));
+
+    let remote_repo = git2::Repository::open_bare(&remote_path).expect("open bare remote");
+    remote_repo
+        .find_reference("refs/heads/gitss/stale-download")
+        .expect("remote snapshot ref")
+        .delete()
+        .expect("delete remote snapshot ref");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["download", "stale-download"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "snapshot 'stale-download' was not found on the selected remote",
+        ));
+}
+
+#[test]
+fn download_refuses_to_overwrite_ignored_file_without_force() {
+    let (_temp, work_path, _remote_path, repo) = create_repo_with_bare_origin();
+    std::fs::write(work_path.join(".gitignore"), "ignored.txt\n").expect("write gitignore");
+    commit_paths(&repo, &[Path::new(".gitignore")], "ignore ignored.txt");
+    std::fs::write(work_path.join("ignored.txt"), "snapshot version\n")
+        .expect("write ignored snapshot file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args([
+            "upload",
+            "--id",
+            "ignored-overwrite",
+            "--include-ignored",
+            "workdir",
+        ])
+        .assert()
+        .success();
+    std::fs::write(work_path.join("ignored.txt"), "local ignored version\n")
+        .expect("write local ignored file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["download", "ignored-overwrite"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("working tree has local changes"));
+
+    let contents = std::fs::read_to_string(work_path.join("ignored.txt")).expect("ignored file");
+    assert_eq!(contents, "local ignored version\n");
+}
+
+#[test]
 fn upload_workdir_includes_untracked_nonignored_files() {
     let (_temp, work_path, remote_path, _repo) = create_repo_with_bare_origin();
     std::fs::write(work_path.join("scratch.txt"), "scratch\n").expect("write scratch file");

@@ -1,9 +1,10 @@
 use std::path::Path;
 
 use chrono::Local;
+use git2::build::CheckoutBuilder;
 use git2::{
     Cred, CredentialType, Direction, ErrorCode, FetchOptions, FetchPrune, IndexAddOption,
-    PushOptions, RemoteCallbacks, Repository, Signature,
+    PushOptions, RemoteCallbacks, Repository, Signature, StatusOptions,
 };
 use thiserror::Error;
 
@@ -19,6 +20,10 @@ pub enum GitSsError {
     MissingRemote(String),
     #[error("invalid snapshot id '{0}'")]
     InvalidId(String),
+    #[error("working tree has local changes; use --force to overwrite them")]
+    DirtyWorktree,
+    #[error("snapshot '{0}' was not found on the selected remote")]
+    MissingSnapshot(String),
     #[error("cannot resolve source ref '{0}' to a commit")]
     UnresolvableRef(String),
     #[error("remote snapshot branch '{0}' already exists")]
@@ -218,6 +223,71 @@ pub fn list_snapshots(
     Ok(snapshots)
 }
 
+pub fn download_snapshot(
+    repo: &Repository,
+    remote_name: &str,
+    id: &str,
+    force: bool,
+) -> Result<git2::Oid, GitSsError> {
+    metadata::validate_id(id).map_err(|_| GitSsError::InvalidId(id.to_owned()))?;
+
+    let mut remote = resolve_remote(repo, remote_name)?;
+    let remote_ref = format!("refs/heads/gitss/{id}");
+    let local_ref = format!("refs/remotes/{remote_name}/gitss/{id}");
+    let refspec = format!("+{remote_ref}:{local_ref}");
+    let refspecs = [refspec.as_str()];
+    delete_reference_if_exists(repo, &local_ref)?;
+
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.remote_callbacks(remote_callbacks(repo)?);
+    remote
+        .fetch(&refspecs, Some(&mut fetch_options), Some("git-ss download"))
+        .map_err(|err| match err.code() {
+            ErrorCode::NotFound => GitSsError::MissingSnapshot(id.to_owned()),
+            _ => GitSsError::Git(err),
+        })?;
+
+    let snapshot_ref = repo
+        .find_reference(&local_ref)
+        .map_err(|err| match err.code() {
+            ErrorCode::NotFound => GitSsError::MissingSnapshot(id.to_owned()),
+            _ => GitSsError::Git(err),
+        })?;
+    let commit = snapshot_ref.peel_to_commit()?;
+
+    if !force {
+        if is_worktree_dirty(repo)? {
+            return Err(GitSsError::DirtyWorktree);
+        }
+
+        let mut dry_run = CheckoutBuilder::new();
+        dry_run.safe().overwrite_ignored(false).dry_run();
+        repo.checkout_tree(commit.as_object(), Some(&mut dry_run))
+            .map_err(map_checkout_error)?;
+    }
+
+    let mut checkout = CheckoutBuilder::new();
+    if force {
+        checkout.force().remove_untracked(true);
+    } else {
+        checkout.safe().overwrite_ignored(false);
+    }
+
+    repo.checkout_tree(commit.as_object(), Some(&mut checkout))
+        .map_err(map_checkout_error)?;
+    repo.set_head_detached(commit.id())?;
+
+    Ok(commit.id())
+}
+
+fn is_worktree_dirty(repo: &Repository) -> Result<bool, GitSsError> {
+    let mut options = StatusOptions::new();
+    options.include_untracked(true).recurse_untracked_dirs(true);
+    let statuses = repo.statuses(Some(&mut options))?;
+
+    Ok(statuses.iter().any(|entry| !entry.status().is_empty()))
+}
+
 fn remote_ref_exists(
     repo: &Repository,
     remote_name: &str,
@@ -282,6 +352,24 @@ fn delete_reference(repo: &Repository, refname: &str) -> Result<(), GitSsError> 
     let mut reference = repo.find_reference(refname)?;
     reference.delete()?;
     Ok(())
+}
+
+fn delete_reference_if_exists(repo: &Repository, refname: &str) -> Result<(), GitSsError> {
+    match repo.find_reference(refname) {
+        Ok(mut reference) => reference.delete().map_err(GitSsError::Git),
+        Err(err) if err.code() == ErrorCode::NotFound => Ok(()),
+        Err(err) => Err(GitSsError::Git(err)),
+    }
+}
+
+fn map_checkout_error(err: git2::Error) -> GitSsError {
+    match err.code() {
+        ErrorCode::Conflict
+        | ErrorCode::IndexDirty
+        | ErrorCode::Modified
+        | ErrorCode::Uncommitted => GitSsError::DirtyWorktree,
+        _ => GitSsError::Git(err),
+    }
 }
 
 fn map_head_lookup(err: git2::Error) -> GitSsError {

@@ -1,5 +1,13 @@
-use crate::cli::DownloadArgs;
+use crate::{
+    cli::DownloadArgs,
+    git::{discover_repo, download_snapshot},
+};
 
-pub fn run(_args: DownloadArgs) -> anyhow::Result<()> {
-    anyhow::bail!("download is not implemented yet")
+pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
+    let current_dir = std::env::current_dir()?;
+    let repo = discover_repo(&current_dir)?;
+    let oid = download_snapshot(&repo, &args.remote, &args.id, args.force)?;
+
+    println!("checked out {} at {}", args.id, oid);
+    Ok(())
 }
