@@ -28,7 +28,7 @@ The release CI installs each package in a matching Linux container and verifies 
 Download the latest Linux musl binary from the GitHub release page:
 
 ```bash
-curl -L -o git-ss https://github.com/rijuyuezhu/git-ss/releases/download/v0.1.1/git-ss-x86_64-unknown-linux-musl
+curl -L -o git-ss https://github.com/rijuyuezhu/git-ss/releases/download/v0.1.2/git-ss-x86_64-unknown-linux-musl
 chmod +x git-ss
 sudo mv git-ss /usr/local/bin/git-ss
 ```
