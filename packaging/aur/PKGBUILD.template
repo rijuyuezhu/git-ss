@@ -1,0 +1,21 @@
+# Maintainer: Rijuyuezhu <rijuyuezhu@users.noreply.github.com>
+pkgname=git-ss-bin
+pkgver=@PKGVER@
+pkgrel=1
+pkgdesc='A Git plugin for sharing temporary snapshot branches.'
+arch=('x86_64')
+url='https://github.com/rijuyuezhu/git-ss'
+license=('MIT')
+depends=('git')
+provides=('git-ss')
+conflicts=('git-ss')
+options=('!strip')
+source=("git-ss-${pkgver}::${url}/releases/download/v${pkgver}/git-ss-x86_64-unknown-linux-musl"
+        "LICENSE-${pkgver}::${url}/raw/v${pkgver}/LICENSE")
+sha256sums=('@BINARY_SHA256@'
+            '@LICENSE_SHA256@')
+
+package() {
+  install -Dm755 "git-ss-${pkgver}" "${pkgdir}/usr/bin/git-ss"
+  install -Dm644 "LICENSE-${pkgver}" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
