@@ -6,19 +6,57 @@ The binary is named `git-ss`, so Git also exposes it as `git ss` when it is on y
 
 ## Install
 
-### Linux Packages
+### Release Assets
 
-GitHub releases provide x86_64 Linux packages for Debian/Ubuntu, Fedora/RHEL-compatible systems, and Arch Linux:
+GitHub releases publish binaries for Linux, macOS, and Windows:
+
+| Platform | Release assets |
+| --- | --- |
+| Linux x86_64 | `git-ss-x86_64-unknown-linux-musl`, `git-ss-x86_64-unknown-linux-musl.tar.gz`, `git-ss-x86_64-unknown-linux-gnu`, `git-ss-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux arm64 | `git-ss-aarch64-unknown-linux-musl`, `git-ss-aarch64-unknown-linux-musl.tar.gz`, `git-ss-aarch64-unknown-linux-gnu`, `git-ss-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS Intel | `git-ss-x86_64-apple-darwin`, `git-ss-x86_64-apple-darwin.tar.gz` |
+| macOS Apple Silicon | `git-ss-aarch64-apple-darwin`, `git-ss-aarch64-apple-darwin.tar.gz` |
+| Windows x86_64 | `git-ss-x86_64-pc-windows-msvc.exe`, `git-ss-x86_64-pc-windows-msvc.zip` |
+| Windows arm64 | `git-ss-aarch64-pc-windows-msvc.exe`, `git-ss-aarch64-pc-windows-msvc.zip` |
+
+Each release also includes `SHA256SUMS`.
+
+### Linux Install Script
+
+For Linux servers, install the musl static binary for the current CPU architecture with:
 
 ```bash
-# Debian/Ubuntu
+curl -fsSL https://github.com/rijuyuezhu/git-ss/releases/latest/download/install.sh | sh
+```
+
+The installer supports x86_64 and arm64 Linux. To install a specific release or avoid `sudo`, pass environment variables to `sh`:
+
+```bash
+curl -fsSL https://github.com/rijuyuezhu/git-ss/releases/latest/download/install.sh | GIT_SS_VERSION=v0.1.2 GIT_SS_INSTALL_DIR="$HOME/.local/bin" sh
+```
+
+### Linux Packages
+
+GitHub releases provide amd64 and arm64 Linux packages for Debian/Ubuntu, Fedora/RHEL-compatible systems, and Arch Linux. These packages use the musl static binary to avoid coupling the upstream package to the glibc version on the CI runner; glibc builds are available as standalone release assets.
+
+```bash
+# Debian/Ubuntu x86_64
 sudo apt install ./git-ss_*_amd64.deb
 
-# Fedora/RHEL-compatible
+# Debian/Ubuntu arm64
+sudo apt install ./git-ss_*_arm64.deb
+
+# Fedora/RHEL-compatible x86_64
 sudo dnf install ./git-ss-*.x86_64.rpm
 
-# Arch Linux
+# Fedora/RHEL-compatible arm64
+sudo dnf install ./git-ss-*.aarch64.rpm
+
+# Arch Linux x86_64
 sudo pacman -U ./git-ss-*-x86_64.pkg.tar.zst
+
+# Arch Linux arm64
+sudo pacman -U ./git-ss-*-aarch64.pkg.tar.zst
 ```
 
 The release CI installs each package in a matching Linux container and verifies `git-ss --version`, `git-ss --help`, and the Git plugin entry point with `git ss -h`.
@@ -38,6 +76,14 @@ Verify the installation:
 ```bash
 git ss -h
 ```
+
+### macOS
+
+Download the `x86_64-apple-darwin` archive for Intel Macs or the `aarch64-apple-darwin` archive for Apple Silicon Macs from the GitHub release page, then place `git-ss` on your `PATH`.
+
+### Windows
+
+Download `git-ss-x86_64-pc-windows-msvc.zip` for x86_64 Windows or `git-ss-aarch64-pc-windows-msvc.zip` for Windows on Arm from the GitHub release page, then place `git-ss.exe` on your `PATH`.
 
 ### Build From Source
 
@@ -141,21 +187,23 @@ cargo test --all-targets --all-features
 cargo doc --no-deps --document-private-items
 ```
 
-Build the static Linux release binary:
+Build a release binary locally:
 
 ```bash
 rustup target add x86_64-unknown-linux-musl
 cargo build --release --target x86_64-unknown-linux-musl
 ```
 
-Build the release packages locally after building the static binary:
+CI builds and smoke-tests release binaries for `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`, and `aarch64-pc-windows-msvc`.
+
+Build the Linux release packages locally after building a musl binary:
 
 ```bash
 go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3
 export PATH="$(go env GOPATH)/bin:$PATH"
-PACKAGE_VERSION=$(cargo pkgid | cut -d# -f2) PACKAGE_RELEASE=1 nfpm package --packager deb --target dist/
-PACKAGE_VERSION=$(cargo pkgid | cut -d# -f2) PACKAGE_RELEASE=1 nfpm package --packager rpm --target dist/
-PACKAGE_VERSION=$(cargo pkgid | cut -d# -f2) PACKAGE_RELEASE=1 nfpm package --packager archlinux --target dist/
+PACKAGE_VERSION=$(cargo pkgid | cut -d# -f2) PACKAGE_RELEASE=1 PACKAGE_ARCH=amd64 PACKAGE_BINARY=target/x86_64-unknown-linux-musl/release/git-ss nfpm package --packager deb --target dist/
+PACKAGE_VERSION=$(cargo pkgid | cut -d# -f2) PACKAGE_RELEASE=1 PACKAGE_ARCH=amd64 PACKAGE_BINARY=target/x86_64-unknown-linux-musl/release/git-ss nfpm package --packager rpm --target dist/
+PACKAGE_VERSION=$(cargo pkgid | cut -d# -f2) PACKAGE_RELEASE=1 PACKAGE_ARCH=amd64 PACKAGE_BINARY=target/x86_64-unknown-linux-musl/release/git-ss nfpm package --packager archlinux --target dist/
 ```
 
 ### AUR Publishing

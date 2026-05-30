@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
 name: git-ss
-arch: amd64
+arch: ${PACKAGE_ARCH}
 platform: linux
 version: ${PACKAGE_VERSION}
 version_schema: semver
@@ -15,7 +15,8 @@ license: MIT
 depends:
   - git
 contents:
-  - src: target/x86_64-unknown-linux-musl/release/git-ss
+  - src: ${PACKAGE_BINARY}
     dst: /usr/bin/git-ss
+    expand: true
     file_info:
       mode: 0755

@@ -381,7 +381,7 @@ fn download_force_checks_out_snapshot_detached() {
         .success();
 
     let restored = std::fs::read_to_string(work_path.join("server.txt")).expect("server file");
-    assert_eq!(restored, "from server\n");
+    assert_eq!(restored.replace("\r\n", "\n"), "from server\n");
     let repo = git2::Repository::open(&work_path).expect("repo open");
     assert!(!repo.head().expect("head").is_branch());
 }
