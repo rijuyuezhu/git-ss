@@ -17,5 +17,6 @@ depends:
 contents:
   - src: ${PACKAGE_BINARY}
     dst: /usr/bin/git-ss
+    expand: true
     file_info:
       mode: 0755
