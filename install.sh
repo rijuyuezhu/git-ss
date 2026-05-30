@@ -59,8 +59,8 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
 info "downloading ${asset}"
-download "${base_url}/${asset}" "${tmp_dir}/git-ss"
-chmod 0755 "${tmp_dir}/git-ss"
+download "${base_url}/${asset}" "${tmp_dir}/${asset}"
+chmod 0755 "${tmp_dir}/${asset}"
 
 if command -v sha256sum >/dev/null 2>&1; then
   if download "${base_url}/SHA256SUMS" "${tmp_dir}/SHA256SUMS"; then
@@ -89,9 +89,9 @@ else
 fi
 
 if command -v install >/dev/null 2>&1; then
-  $sudo_cmd install -m 0755 "${tmp_dir}/git-ss" "${install_dir}/git-ss"
+  $sudo_cmd install -m 0755 "${tmp_dir}/${asset}" "${install_dir}/git-ss"
 else
-  $sudo_cmd cp "${tmp_dir}/git-ss" "${install_dir}/git-ss"
+  $sudo_cmd cp "${tmp_dir}/${asset}" "${install_dir}/git-ss"
   $sudo_cmd chmod 0755 "${install_dir}/git-ss"
 fi
 
