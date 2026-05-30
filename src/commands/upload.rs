@@ -26,40 +26,30 @@ pub fn run(args: UploadArgs) -> anyhow::Result<()> {
         anyhow::bail!("--include-ignored can only be used with upload workdir");
     }
 
-    match parsed_target {
-        UploadTarget::Workdir => {
-            let id = id.unwrap_or_else(|| format_default_id(Local::now().fixed_offset()));
-            let current_dir = std::env::current_dir()?;
-            let repo = discover_repo(&current_dir)?;
-            let result = upload_workdir_snapshot(
-                &repo,
-                SnapshotUpload {
-                    id: &id,
-                    remote: &remote,
-                    source: "HEAD",
-                    include_ignored,
-                },
-            )?;
+    let id = id.unwrap_or_else(|| format_default_id(Local::now().fixed_offset()));
+    let current_dir = std::env::current_dir()?;
+    let repo = discover_repo(&current_dir)?;
+    let result = match parsed_target {
+        UploadTarget::Workdir => upload_workdir_snapshot(
+            &repo,
+            SnapshotUpload {
+                id: &id,
+                remote: &remote,
+                source: "HEAD",
+                include_ignored,
+            },
+        ),
+        UploadTarget::Ref(source) => upload_ref_snapshot(
+            &repo,
+            SnapshotUpload {
+                id: &id,
+                remote: &remote,
+                source,
+                include_ignored: false,
+            },
+        ),
+    }?;
 
-            println!("{}", result.id);
-            Ok(())
-        }
-        UploadTarget::Ref(source) => {
-            let id = id.unwrap_or_else(|| format_default_id(Local::now().fixed_offset()));
-            let current_dir = std::env::current_dir()?;
-            let repo = discover_repo(&current_dir)?;
-            let result = upload_ref_snapshot(
-                &repo,
-                SnapshotUpload {
-                    id: &id,
-                    remote: &remote,
-                    source,
-                    include_ignored: false,
-                },
-            )?;
-
-            println!("{}", result.id);
-            Ok(())
-        }
-    }
+    println!("{}", result.id);
+    Ok(())
 }

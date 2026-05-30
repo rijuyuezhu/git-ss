@@ -117,50 +117,26 @@ pub fn upload_ref_snapshot(
     repo: &Repository,
     input: SnapshotUpload<'_>,
 ) -> Result<UploadResult, GitSsError> {
-    metadata::validate_id(input.id).map_err(|_| GitSsError::InvalidId(input.id.to_owned()))?;
-    require_head(repo)?;
-
-    let mut remote = resolve_remote(repo, input.remote)?;
-    let remote_ref = format!("refs/heads/gitss/{}", input.id);
-    if remote_ref_exists(repo, &mut remote, &remote_ref)? {
-        return Err(GitSsError::RemoteBranchExists(remote_ref));
-    }
+    let (mut remote, remote_ref, _) = prepare_snapshot_upload(repo, &input)?;
 
     let source_commit = repo
         .revparse_single(input.source)
         .and_then(|object| object.peel_to_commit())
         .map_err(|_| GitSsError::UnresolvableRef(input.source.to_owned()))?;
     let tree = source_commit.tree()?;
-    let signature = snapshot_signature(repo)?;
-    let metadata = SnapshotMetadata {
-        id: input.id.to_owned(),
-        kind: UploadKind::Ref,
-        source: input.source.to_owned(),
-        source_commit: source_commit.id().to_string(),
-        created_at: Local::now().fixed_offset(),
-        remote: input.remote.to_owned(),
-        include_ignored: false,
-        tool_version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    let message = metadata.to_commit_message();
-    let snapshot_commit = repo.commit(
-        None,
-        &signature,
-        &signature,
-        &message,
-        &tree,
-        &[&source_commit],
-    )?;
-
-    let temp_ref = format!("refs/gitss/tmp/{}", input.id);
-    repo.reference(&temp_ref, snapshot_commit, true, "git-ss snapshot upload")?;
-    push_temp_ref(repo, &mut remote, &temp_ref, &remote_ref)?;
-
-    Ok(UploadResult {
-        id: input.id.to_owned(),
+    finish_snapshot_upload(
+        repo,
+        &mut remote,
         remote_ref,
-        commit: snapshot_commit,
-    })
+        &input,
+        SnapshotContents {
+            kind: UploadKind::Ref,
+            source: input.source,
+            source_commit: &source_commit,
+            tree: &tree,
+            include_ignored: false,
+        },
+    )
 }
 
 /// Creates a snapshot commit from the current working directory and pushes it to the selected remote.
@@ -168,14 +144,7 @@ pub fn upload_workdir_snapshot(
     repo: &Repository,
     input: SnapshotUpload<'_>,
 ) -> Result<UploadResult, GitSsError> {
-    metadata::validate_id(input.id).map_err(|_| GitSsError::InvalidId(input.id.to_owned()))?;
-    let head_id = require_head(repo)?;
-
-    let mut remote = resolve_remote(repo, input.remote)?;
-    let remote_ref = format!("refs/heads/gitss/{}", input.id);
-    if remote_ref_exists(repo, &mut remote, &remote_ref)? {
-        return Err(GitSsError::RemoteBranchExists(remote_ref));
-    }
+    let (mut remote, remote_ref, head_id) = prepare_snapshot_upload(repo, &input)?;
 
     let head_commit = repo.find_commit(head_id)?;
     let mut index = repo.index()?;
@@ -188,15 +157,61 @@ pub fn upload_workdir_snapshot(
     index.add_all(["*"].iter(), add_option, None)?;
     let tree_id = index.write_tree_to(repo)?;
     let tree = repo.find_tree(tree_id)?;
+    finish_snapshot_upload(
+        repo,
+        &mut remote,
+        remote_ref,
+        &input,
+        SnapshotContents {
+            kind: UploadKind::Workdir,
+            source: "HEAD",
+            source_commit: &head_commit,
+            tree: &tree,
+            include_ignored: input.include_ignored,
+        },
+    )
+}
+
+struct SnapshotContents<'repo, 'source> {
+    kind: UploadKind,
+    source: &'source str,
+    source_commit: &'source git2::Commit<'repo>,
+    tree: &'source git2::Tree<'repo>,
+    include_ignored: bool,
+}
+
+fn prepare_snapshot_upload<'repo>(
+    repo: &'repo Repository,
+    input: &SnapshotUpload<'_>,
+) -> Result<(git2::Remote<'repo>, String, git2::Oid), GitSsError> {
+    metadata::validate_id(input.id).map_err(|_| GitSsError::InvalidId(input.id.to_owned()))?;
+    let head_id = require_head(repo)?;
+
+    let mut remote = resolve_remote(repo, input.remote)?;
+    let remote_ref = format!("refs/heads/gitss/{}", input.id);
+    if remote_ref_exists(repo, &mut remote, &remote_ref)? {
+        return Err(GitSsError::RemoteBranchExists(remote_ref));
+    }
+
+    Ok((remote, remote_ref, head_id))
+}
+
+fn finish_snapshot_upload(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    remote_ref: String,
+    input: &SnapshotUpload<'_>,
+    contents: SnapshotContents<'_, '_>,
+) -> Result<UploadResult, GitSsError> {
     let signature = snapshot_signature(repo)?;
     let metadata = SnapshotMetadata {
         id: input.id.to_owned(),
-        kind: UploadKind::Workdir,
-        source: "HEAD".to_owned(),
-        source_commit: head_commit.id().to_string(),
+        kind: contents.kind,
+        source: contents.source.to_owned(),
+        source_commit: contents.source_commit.id().to_string(),
         created_at: Local::now().fixed_offset(),
         remote: input.remote.to_owned(),
-        include_ignored: input.include_ignored,
+        include_ignored: contents.include_ignored,
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
     };
     let message = metadata.to_commit_message();
@@ -205,13 +220,13 @@ pub fn upload_workdir_snapshot(
         &signature,
         &signature,
         &message,
-        &tree,
-        &[&head_commit],
+        contents.tree,
+        &[contents.source_commit],
     )?;
 
     let temp_ref = format!("refs/gitss/tmp/{}", input.id);
     repo.reference(&temp_ref, snapshot_commit, true, "git-ss snapshot upload")?;
-    push_temp_ref(repo, &mut remote, &temp_ref, &remote_ref)?;
+    push_temp_ref(repo, remote, &temp_ref, &remote_ref)?;
 
     Ok(UploadResult {
         id: input.id.to_owned(),
