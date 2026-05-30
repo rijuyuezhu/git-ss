@@ -171,16 +171,101 @@ fn list_displays_snapshot_metadata() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
-    let row = stdout
-        .lines()
-        .find(|line| line.starts_with("list-demo\t"))
-        .expect("list-demo row");
-    let columns = row.split('\t').collect::<Vec<_>>();
-    assert_eq!(columns[0], "list-demo");
-    assert_eq!(columns[2], "ref");
-    assert_eq!(columns[3], "HEAD");
-    assert_eq!(columns[4], source_commit);
-    assert_eq!(columns[5], "refs/remotes/origin/gitss/list-demo");
+    assert!(stdout.contains("list-demo"));
+    assert!(stdout.contains("ref"));
+    assert!(stdout.contains("HEAD"));
+    assert!(stdout.contains(&source_commit[..7]));
+    assert!(stdout.contains("initial commit"));
+    assert!(stdout.contains("no changes"));
+}
+
+#[test]
+fn list_summarizes_workdir_changes() {
+    let (_temp, work_path, _remote_path, _repo) = create_repo_with_bare_origin();
+    std::fs::write(work_path.join("scratch.txt"), "scratch\n").expect("write scratch file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "workdir-list", "workdir"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .output()
+        .expect("run list");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("workdir-list"));
+    assert!(stdout.contains("workdir"));
+    assert!(stdout.contains("initial commit"));
+    assert!(stdout.contains("1 file, +1 -0"));
+}
+
+#[test]
+fn list_displays_include_ignored_flag() {
+    let (_temp, work_path, _remote_path, repo) = create_repo_with_bare_origin();
+    std::fs::write(work_path.join(".gitignore"), "ignored.txt\n").expect("write gitignore");
+    commit_paths(&repo, &[Path::new(".gitignore")], "ignore ignored.txt");
+    std::fs::write(work_path.join("ignored.txt"), "ignored\n").expect("write ignored file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args([
+            "upload",
+            "--id",
+            "ignored-list",
+            "--include-ignored",
+            "workdir",
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .output()
+        .expect("run list");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("IGNORED"));
+    assert!(stdout.contains("ignored-list"));
+    assert!(stdout.contains("yes"));
+}
+
+#[test]
+fn list_wraps_long_base_commit_summaries() {
+    let (_temp, work_path, _remote_path, repo) = create_repo_with_bare_origin();
+    let long_message = "implement a very long base commit title with many words that should wrap inside the base column";
+    std::fs::write(work_path.join("long.txt"), "long\n").expect("write long file");
+    commit_paths(&repo, &[Path::new("long.txt")], long_message);
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "long-base", "HEAD"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("list")
+        .output()
+        .expect("run list");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("long-base"));
+    assert!(stdout.contains("implement a very long base"));
+    assert!(!stdout.contains(long_message));
 }
 
 #[test]

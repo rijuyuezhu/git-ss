@@ -86,7 +86,7 @@ git ss upload --id full-scratch --include-ignored workdir
 git ss list
 ```
 
-The command fetches `refs/heads/gitss/*` from the selected remote and prints a tab-separated table with the snapshot id, creation time, type, source, source commit, and remote-tracking ref.
+The command fetches `refs/heads/gitss/*` from the selected remote and prints an aligned terminal table with the snapshot id, creation time, age, type, source, whether ignored files were included, base commit summary, snapshot commit, and change stats.
 
 ### Download a Snapshot
 
