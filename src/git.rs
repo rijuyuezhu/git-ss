@@ -120,9 +120,9 @@ pub fn upload_ref_snapshot(
     metadata::validate_id(input.id).map_err(|_| GitSsError::InvalidId(input.id.to_owned()))?;
     require_head(repo)?;
 
-    resolve_remote(repo, input.remote)?;
+    let mut remote = resolve_remote(repo, input.remote)?;
     let remote_ref = format!("refs/heads/gitss/{}", input.id);
-    if remote_ref_exists(repo, input.remote, &remote_ref)? {
+    if remote_ref_exists(repo, &mut remote, &remote_ref)? {
         return Err(GitSsError::RemoteBranchExists(remote_ref));
     }
 
@@ -154,7 +154,7 @@ pub fn upload_ref_snapshot(
 
     let temp_ref = format!("refs/gitss/tmp/{}", input.id);
     repo.reference(&temp_ref, snapshot_commit, true, "git-ss snapshot upload")?;
-    push_temp_ref(repo, input.remote, &temp_ref, &remote_ref)?;
+    push_temp_ref(repo, &mut remote, &temp_ref, &remote_ref)?;
 
     Ok(UploadResult {
         id: input.id.to_owned(),
@@ -171,9 +171,9 @@ pub fn upload_workdir_snapshot(
     metadata::validate_id(input.id).map_err(|_| GitSsError::InvalidId(input.id.to_owned()))?;
     let head_id = require_head(repo)?;
 
-    resolve_remote(repo, input.remote)?;
+    let mut remote = resolve_remote(repo, input.remote)?;
     let remote_ref = format!("refs/heads/gitss/{}", input.id);
-    if remote_ref_exists(repo, input.remote, &remote_ref)? {
+    if remote_ref_exists(repo, &mut remote, &remote_ref)? {
         return Err(GitSsError::RemoteBranchExists(remote_ref));
     }
 
@@ -211,7 +211,7 @@ pub fn upload_workdir_snapshot(
 
     let temp_ref = format!("refs/gitss/tmp/{}", input.id);
     repo.reference(&temp_ref, snapshot_commit, true, "git-ss snapshot upload")?;
-    push_temp_ref(repo, input.remote, &temp_ref, &remote_ref)?;
+    push_temp_ref(repo, &mut remote, &temp_ref, &remote_ref)?;
 
     Ok(UploadResult {
         id: input.id.to_owned(),
@@ -329,10 +329,9 @@ fn is_worktree_dirty(repo: &Repository) -> Result<bool, GitSsError> {
 /// Checks whether a remote advertises a specific ref.
 fn remote_ref_exists(
     repo: &Repository,
-    remote_name: &str,
+    remote: &mut git2::Remote<'_>,
     remote_ref: &str,
 ) -> Result<bool, GitSsError> {
-    let mut remote = resolve_remote(repo, remote_name)?;
     let callbacks = remote_callbacks(repo)?;
     let connection = remote.connect_auth(Direction::Push, Some(callbacks), None)?;
 
@@ -345,11 +344,10 @@ fn remote_ref_exists(
 /// Pushes a local ref to a remote ref and converts push callback failures into errors.
 fn push_ref(
     repo: &Repository,
-    remote_name: &str,
+    remote: &mut git2::Remote<'_>,
     source_ref: &str,
     remote_ref: &str,
 ) -> Result<(), GitSsError> {
-    let mut remote = resolve_remote(repo, remote_name)?;
     let refspec = format!("{source_ref}:{remote_ref}");
     let mut push_failure = None;
 
@@ -377,11 +375,11 @@ fn push_ref(
 /// Pushes a temporary snapshot ref and deletes it locally after a successful push attempt.
 fn push_temp_ref(
     repo: &Repository,
-    remote_name: &str,
+    remote: &mut git2::Remote<'_>,
     temp_ref: &str,
     remote_ref: &str,
 ) -> Result<(), GitSsError> {
-    let push_result = push_ref(repo, remote_name, temp_ref, remote_ref);
+    let push_result = push_ref(repo, remote, temp_ref, remote_ref);
     let cleanup_result = delete_reference(repo, temp_ref);
 
     push_result?;
