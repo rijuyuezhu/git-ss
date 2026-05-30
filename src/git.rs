@@ -10,7 +10,7 @@ use chrono::Local;
 use git2::build::CheckoutBuilder;
 use git2::{
     Cred, CredentialType, Direction, ErrorCode, FetchOptions, FetchPrune, IndexAddOption,
-    PushOptions, RemoteCallbacks, Repository, Signature, StatusOptions,
+    ProxyOptions, PushOptions, RemoteCallbacks, Repository, Signature, StatusOptions,
 };
 use thiserror::Error;
 
@@ -230,6 +230,7 @@ pub fn list_snapshots(
     let refspecs = [refspec.as_str()];
     let mut fetch_options = FetchOptions::new();
     fetch_options.remote_callbacks(remote_callbacks(repo)?);
+    fetch_options.proxy_options(auto_proxy_options());
     fetch_options.prune(FetchPrune::On);
     remote.fetch(&refspecs, Some(&mut fetch_options), Some("git-ss list"))?;
 
@@ -277,6 +278,7 @@ pub fn download_snapshot(
 
     let mut fetch_options = FetchOptions::new();
     fetch_options.remote_callbacks(remote_callbacks(repo)?);
+    fetch_options.proxy_options(auto_proxy_options());
     remote
         .fetch(&refspecs, Some(&mut fetch_options), Some("git-ss download"))
         .map_err(|err| match err.code() {
@@ -333,7 +335,8 @@ fn remote_ref_exists(
     remote_ref: &str,
 ) -> Result<bool, GitSsError> {
     let callbacks = remote_callbacks(repo)?;
-    let connection = remote.connect_auth(Direction::Push, Some(callbacks), None)?;
+    let connection =
+        remote.connect_auth(Direction::Push, Some(callbacks), Some(auto_proxy_options()))?;
 
     Ok(connection
         .list()?
@@ -362,6 +365,7 @@ fn push_ref(
 
         let mut push_options = PushOptions::new();
         push_options.remote_callbacks(callbacks);
+        push_options.proxy_options(auto_proxy_options());
         remote.push(&[&refspec], Some(&mut push_options))?;
     }
 
@@ -428,6 +432,13 @@ fn snapshot_signature(repo: &Repository) -> Result<Signature<'_>, GitSsError> {
         Ok(signature) => Ok(signature),
         Err(_) => Signature::now("git-ss", "git-ss@example.invalid").map_err(GitSsError::Git),
     }
+}
+
+/// Enables libgit2 proxy auto-detection from Git config and proxy environment variables.
+fn auto_proxy_options() -> ProxyOptions<'static> {
+    let mut options = ProxyOptions::new();
+    options.auto();
+    options
 }
 
 /// Creates libgit2 remote callbacks for SSH and HTTPS credential lookup.
