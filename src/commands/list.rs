@@ -47,7 +47,7 @@ pub fn run(args: RemoteArgs) -> anyhow::Result<()> {
                     ),
                     UploadKind::Ref => ("ref", "-"),
                 };
-                table.add_row(vec![
+                table.add_row([
                     Cell::new(snapshot.id),
                     Cell::new(format_created(metadata.created_at)),
                     Cell::new(format_age(metadata.created_at)),
@@ -60,7 +60,7 @@ pub fn run(args: RemoteArgs) -> anyhow::Result<()> {
                 ]);
             }
             Err(err) => {
-                table.add_row(vec![
+                table.add_row([
                     Cell::new(snapshot.id),
                     Cell::new("WARN"),
                     Cell::new("WARN"),

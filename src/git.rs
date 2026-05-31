@@ -271,7 +271,6 @@ pub fn list_snapshots(
         });
     }
 
-    snapshots.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(snapshots)
 }
 
