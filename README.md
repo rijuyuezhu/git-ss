@@ -134,6 +134,8 @@ git ss list
 
 The command fetches `refs/heads/gitss/*` from the selected remote and prints an aligned terminal table with the snapshot id, creation time, age, type, source, whether ignored files were included, base commit summary, snapshot commit, and change stats.
 
+For machine-readable output, pass `--format csv` or `--format json`. These formats print raw snapshot records with full commit ids, metadata fields, and numeric change stats.
+
 ### Download a Snapshot
 
 ```bash

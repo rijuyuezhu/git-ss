@@ -207,6 +207,88 @@ fn list_summarizes_workdir_changes() {
 }
 
 #[test]
+fn list_outputs_raw_json_and_csv_formats() {
+    let (_temp, work_path, _remote_path, repo) = create_repo_with_bare_origin();
+    let source_commit = repo
+        .head()
+        .expect("head")
+        .peel_to_commit()
+        .expect("source commit")
+        .id()
+        .to_string();
+    std::fs::write(work_path.join("raw.txt"), "raw\n").expect("write raw file");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "raw-list", "workdir"])
+        .assert()
+        .success();
+
+    let json_output = Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["list", "--format", "json"])
+        .output()
+        .expect("run json list");
+
+    assert!(json_output.status.success());
+    let json_stdout = String::from_utf8(json_output.stdout).expect("utf8 json stdout");
+    let rows: serde_json::Value = serde_json::from_str(&json_stdout).expect("json list output");
+    let row = rows
+        .as_array()
+        .expect("json array")
+        .iter()
+        .find(|row| row["id"] == "raw-list")
+        .expect("raw-list json row");
+
+    assert_eq!(row["remote_ref"], "refs/remotes/origin/gitss/raw-list");
+    assert_eq!(row["type"], "workdir");
+    assert_eq!(row["source"], "HEAD");
+    assert_eq!(row["source_commit"], source_commit);
+    assert_eq!(row["include_ignored"], false);
+    assert_eq!(row["metadata_error"], serde_json::Value::Null);
+    assert_eq!(row["files_changed"], 1);
+    assert_eq!(row["insertions"], 1);
+    assert_eq!(row["deletions"], 0);
+    assert_eq!(row["commit"].as_str().expect("commit oid").len(), 40);
+
+    let csv_output = Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["list", "--format", "csv"])
+        .output()
+        .expect("run csv list");
+
+    assert!(csv_output.status.success());
+    let csv_stdout = String::from_utf8(csv_output.stdout).expect("utf8 csv stdout");
+    let mut reader = csv::Reader::from_reader(csv_stdout.as_bytes());
+    let headers = reader.headers().expect("csv headers").clone();
+    let records = reader
+        .records()
+        .collect::<Result<Vec<_>, _>>()
+        .expect("csv records");
+    let row = records
+        .iter()
+        .find(|record| csv_field(&headers, record, "id") == "raw-list")
+        .expect("raw-list csv row");
+
+    assert_eq!(
+        csv_field(&headers, row, "remote_ref"),
+        "refs/remotes/origin/gitss/raw-list"
+    );
+    assert_eq!(csv_field(&headers, row, "type"), "workdir");
+    assert_eq!(csv_field(&headers, row, "source"), "HEAD");
+    assert_eq!(csv_field(&headers, row, "source_commit"), source_commit);
+    assert_eq!(csv_field(&headers, row, "include_ignored"), "false");
+    assert_eq!(csv_field(&headers, row, "metadata_error"), "");
+    assert_eq!(csv_field(&headers, row, "files_changed"), "1");
+    assert_eq!(csv_field(&headers, row, "insertions"), "1");
+    assert_eq!(csv_field(&headers, row, "deletions"), "0");
+    assert_eq!(csv_field(&headers, row, "commit").len(), 40);
+}
+
+#[test]
 fn list_displays_include_ignored_flag() {
     let (_temp, work_path, _remote_path, repo) = create_repo_with_bare_origin();
     std::fs::write(work_path.join(".gitignore"), "ignored.txt\n").expect("write gitignore");
@@ -635,4 +717,16 @@ fn with_remote_snapshot_commit<T>(
     let commit = snapshot_ref.peel_to_commit().expect("snapshot commit");
 
     assert_commit(&commit)
+}
+
+fn csv_field<'a>(
+    headers: &csv::StringRecord,
+    record: &'a csv::StringRecord,
+    name: &str,
+) -> &'a str {
+    let index = headers
+        .iter()
+        .position(|header| header == name)
+        .expect("csv header");
+    record.get(index).expect("csv field")
 }

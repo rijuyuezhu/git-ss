@@ -1,6 +1,6 @@
 //! Command-line interface definitions for `git-ss`.
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Top-level command-line parser.
 #[derive(Debug, Parser)]
@@ -21,7 +21,7 @@ pub enum Command {
     /// Upload a snapshot from an existing ref or the working directory.
     Upload(UploadArgs),
     /// List remote snapshot branches for a remote.
-    List(RemoteArgs),
+    List(ListArgs),
     /// Download a snapshot by id into a detached HEAD checkout.
     Download(DownloadArgs),
 }
@@ -65,12 +65,27 @@ impl UploadArgs {
     }
 }
 
-/// Arguments shared by commands that only need a remote name.
+/// Arguments for `git-ss list`.
 #[derive(Debug, Args)]
-pub struct RemoteArgs {
+pub struct ListArgs {
     /// Remote to fetch snapshot branches from.
     #[arg(long, default_value = "origin")]
     pub remote: String,
+
+    /// Output format for listed snapshots.
+    #[arg(long, value_enum, default_value = "human")]
+    pub format: ListFormat,
+}
+
+/// Supported output formats for `git-ss list`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ListFormat {
+    /// Human-readable terminal table.
+    Human,
+    /// Comma-separated raw snapshot data.
+    Csv,
+    /// JSON raw snapshot data.
+    Json,
 }
 
 /// Arguments for `git-ss download`.
