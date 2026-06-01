@@ -13,6 +13,8 @@ use git2::{Oid, Repository};
 use serde::Serialize;
 use std::{cmp::Ordering, io, io::Write};
 
+use super::Result;
+
 const ID_COLUMN: usize = 0;
 const SOURCE_COLUMN: usize = 4;
 const BASE_COLUMN: usize = 6;
@@ -46,7 +48,7 @@ struct ChangeStats {
 }
 
 /// Fetches snapshot refs from the selected remote and prints the requested listing format.
-pub fn run(args: ListArgs) -> anyhow::Result<()> {
+pub fn run(args: ListArgs) -> Result<()> {
     let current_dir = std::env::current_dir()?;
     let repo = discover_repo(&current_dir)?;
     let mut snapshots = list_snapshots(&repo, &args.remote)?;
@@ -116,7 +118,7 @@ fn print_human(repo: &Repository, snapshots: Vec<ListedSnapshot>) {
     println!("{table}");
 }
 
-fn print_csv(repo: &Repository, snapshots: Vec<ListedSnapshot>) -> anyhow::Result<()> {
+fn print_csv(repo: &Repository, snapshots: Vec<ListedSnapshot>) -> Result<()> {
     let stdout = io::stdout();
     let mut writer = csv::Writer::from_writer(stdout.lock());
     for snapshot in output_snapshots(repo, snapshots) {
@@ -127,7 +129,7 @@ fn print_csv(repo: &Repository, snapshots: Vec<ListedSnapshot>) -> anyhow::Resul
     Ok(())
 }
 
-fn print_json(repo: &Repository, snapshots: Vec<ListedSnapshot>) -> anyhow::Result<()> {
+fn print_json(repo: &Repository, snapshots: Vec<ListedSnapshot>) -> Result<()> {
     let mut stdout = io::stdout().lock();
     serde_json::to_writer_pretty(&mut stdout, &output_snapshots(repo, snapshots))?;
     writeln!(stdout)?;

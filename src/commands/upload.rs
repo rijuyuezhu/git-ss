@@ -8,8 +8,10 @@ use crate::{
     metadata::format_default_id,
 };
 
+use super::{CommandError, Result};
+
 /// Uploads either an existing ref snapshot or a working-directory snapshot.
-pub fn run(args: UploadArgs) -> anyhow::Result<()> {
+pub fn run(args: UploadArgs) -> Result<()> {
     let UploadArgs {
         remote,
         id,
@@ -23,7 +25,7 @@ pub fn run(args: UploadArgs) -> anyhow::Result<()> {
     };
 
     if include_ignored && !matches!(parsed_target, UploadTarget::Workdir) {
-        anyhow::bail!("--include-ignored can only be used with upload workdir");
+        return Err(CommandError::IncludeIgnoredRequiresWorkdir);
     }
 
     let id = id.unwrap_or_else(|| format_default_id(Local::now().fixed_offset()));

@@ -12,5 +12,7 @@ fn main() -> anyhow::Result<()> {
         Command::Upload(args) => git_ss::commands::upload::run(args),
         Command::List(args) => git_ss::commands::list::run(args),
         Command::Download(args) => git_ss::commands::download::run(args),
-    }
+    }?;
+
+    Ok(())
 }
