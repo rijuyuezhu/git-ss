@@ -32,7 +32,7 @@ curl -fsSL https://github.com/rijuyuezhu/git-ss/releases/latest/download/install
 The installer supports x86_64 and arm64 Linux. To install a specific release or avoid `sudo`, pass environment variables to `sh`:
 
 ```bash
-curl -fsSL https://github.com/rijuyuezhu/git-ss/releases/latest/download/install.sh | GIT_SS_VERSION=v0.2.0 GIT_SS_INSTALL_DIR="$HOME/.local/bin" sh
+curl -fsSL https://github.com/rijuyuezhu/git-ss/releases/latest/download/install.sh | GIT_SS_VERSION=v0.2.1 GIT_SS_INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
 ### Linux Packages
@@ -66,7 +66,7 @@ The release CI installs each package in a matching Linux container and verifies 
 Download the latest Linux musl binary from the GitHub release page:
 
 ```bash
-curl -L -o git-ss https://github.com/rijuyuezhu/git-ss/releases/download/v0.2.0/git-ss-x86_64-unknown-linux-musl
+curl -L -o git-ss https://github.com/rijuyuezhu/git-ss/releases/download/v0.2.1/git-ss-x86_64-unknown-linux-musl
 chmod +x git-ss
 sudo mv git-ss /usr/local/bin/git-ss
 ```
