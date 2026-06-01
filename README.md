@@ -210,6 +210,6 @@ PACKAGE_VERSION=$(cargo pkgid | cut -d# -f2) PACKAGE_RELEASE=1 PACKAGE_ARCH=amd6
 
 ### AUR Publishing
 
-AUR accepts `PKGBUILD` sources, not the generated `.pkg.tar.zst` binary package. The easiest AUR path is a `git-ss-bin` package whose `PKGBUILD` downloads the `git-ss-x86_64-unknown-linux-musl` release asset, installs it to `/usr/bin/git-ss`, and declares `depends=('git')`.
+AUR accepts `PKGBUILD` sources, not the generated `.pkg.tar.zst` binary package. The easiest AUR path is a `git-ss-bin` package whose `PKGBUILD` downloads the `git-ss-x86_64-unknown-linux-musl` or `git-ss-aarch64-unknown-linux-musl` release asset for the current Arch architecture, installs it to `/usr/bin/git-ss`, and declares `depends=('git')`.
 
 Release tags publish `git-ss-bin` to AUR with `KSXGitHub/github-actions-deploy-aur@v4.1.3`. To enable it, create an AUR SSH key, add the public key to the AUR account, and store `AUR_USERNAME`, `AUR_EMAIL`, and `AUR_SSH_PRIVATE_KEY` as GitHub Actions secrets.
