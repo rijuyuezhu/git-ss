@@ -635,6 +635,125 @@ fn upload_workdir_reflects_tracked_deletions() {
     });
 }
 
+#[test]
+fn clean_deletes_snapshot_branches_and_leaves_other_branches() {
+    let (_temp, work_path, remote_path, repo) = create_repo_with_bare_origin();
+    let source_commit = repo
+        .head()
+        .expect("head")
+        .peel_to_commit()
+        .expect("source commit")
+        .id();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "clean-one", "HEAD"])
+        .assert()
+        .success();
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "clean-two", "HEAD"])
+        .assert()
+        .success();
+
+    let remote_repo = git2::Repository::open_bare(&remote_path).expect("open bare remote");
+    remote_repo
+        .reference("refs/heads/main", source_commit, true, "ordinary branch")
+        .expect("ordinary branch");
+    drop(remote_repo);
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("clean")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("deleted 2 snapshot branches"));
+
+    let remote_repo = git2::Repository::open_bare(&remote_path).expect("open bare remote");
+    assert!(
+        remote_repo
+            .find_reference("refs/heads/gitss/clean-one")
+            .is_err()
+    );
+    assert!(
+        remote_repo
+            .find_reference("refs/heads/gitss/clean-two")
+            .is_err()
+    );
+    assert!(remote_repo.find_reference("refs/heads/main").is_ok());
+}
+
+#[test]
+fn clean_succeeds_without_snapshot_branches() {
+    let (_temp, work_path, remote_path, _repo) = create_repo_with_bare_origin();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .arg("clean")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("deleted 0 snapshot branches"));
+
+    let remote_repo = git2::Repository::open_bare(&remote_path).expect("open bare remote");
+    assert!(remote_repo.references().expect("remote refs").count() == 0);
+}
+
+#[test]
+fn clean_uses_selected_remote() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let origin_path = temp.path().join("origin.git");
+    let fork_path = temp.path().join("fork.git");
+    git2::Repository::init_bare(&origin_path).expect("origin init");
+    git2::Repository::init_bare(&fork_path).expect("fork init");
+
+    let work_path = temp.path().join("work");
+    let repo = git2::Repository::init(&work_path).expect("work repo init");
+    create_initial_commit(&repo, &work_path);
+
+    repo.remote("origin", origin_path.to_str().expect("origin path utf-8"))
+        .expect("origin remote");
+    repo.remote("fork", fork_path.to_str().expect("fork path utf-8"))
+        .expect("fork remote");
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--id", "origin-only", "HEAD"])
+        .assert()
+        .success();
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["upload", "--remote", "fork", "--id", "fork-only", "HEAD"])
+        .assert()
+        .success();
+
+    Command::cargo_bin("git-ss")
+        .expect("binary exists")
+        .current_dir(&work_path)
+        .args(["clean", "--remote", "fork"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("deleted 1 snapshot branches"));
+
+    let origin_repo = git2::Repository::open_bare(&origin_path).expect("open origin");
+    let fork_repo = git2::Repository::open_bare(&fork_path).expect("open fork");
+    assert!(
+        origin_repo
+            .find_reference("refs/heads/gitss/origin-only")
+            .is_ok()
+    );
+    assert!(
+        fork_repo
+            .find_reference("refs/heads/gitss/fork-only")
+            .is_err()
+    );
+}
+
 fn expect_err<T, E>(result: Result<T, E>, message: &str) -> E {
     match result {
         Ok(_) => panic!("{message}"),

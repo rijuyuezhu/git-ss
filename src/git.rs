@@ -16,6 +16,8 @@ use thiserror::Error;
 
 use crate::metadata::{self, SnapshotMetadata, UploadKind};
 
+const SNAPSHOT_BRANCH_PREFIX: &str = "refs/heads/gitss/";
+
 /// Errors returned by git-ss Git operations.
 #[derive(Debug, Error)]
 pub enum GitSsError {
@@ -278,6 +280,29 @@ pub fn list_snapshots(
     Ok(snapshots)
 }
 
+/// Deletes all `gitss/*` snapshot branches from a remote.
+pub fn clean_snapshots(repo: &Repository, remote_name: &str) -> Result<usize, GitSsError> {
+    let mut remote = resolve_remote(repo, remote_name)?;
+    let snapshot_refs = {
+        let callbacks = remote_callbacks(repo)?;
+        let connection =
+            remote.connect_auth(Direction::Push, Some(callbacks), Some(auto_proxy_options()))?;
+
+        connection
+            .list()?
+            .iter()
+            .filter(|head| head.name().starts_with(SNAPSHOT_BRANCH_PREFIX))
+            .map(|head| head.name().to_owned())
+            .collect::<Vec<_>>()
+    };
+
+    for remote_ref in &snapshot_refs {
+        delete_remote_ref(repo, &mut remote, remote_ref)?;
+    }
+
+    Ok(snapshot_refs.len())
+}
+
 /// Fetches one snapshot branch and checks it out as a detached HEAD.
 pub fn download_snapshot(
     repo: &Repository,
@@ -370,6 +395,25 @@ fn push_ref(
     remote_ref: &str,
 ) -> Result<(), GitSsError> {
     let refspec = format!("{source_ref}:{remote_ref}");
+    push_refspec(repo, remote, &refspec)
+}
+
+/// Deletes a remote ref by pushing an empty source refspec.
+fn delete_remote_ref(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    remote_ref: &str,
+) -> Result<(), GitSsError> {
+    let refspec = format!(":{remote_ref}");
+    push_refspec(repo, remote, &refspec)
+}
+
+/// Pushes one refspec and converts push callback failures into errors.
+fn push_refspec(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    refspec: &str,
+) -> Result<(), GitSsError> {
     let mut push_failure = None;
 
     {
@@ -384,7 +428,7 @@ fn push_ref(
         let mut push_options = PushOptions::new();
         push_options.remote_callbacks(callbacks);
         push_options.proxy_options(auto_proxy_options());
-        remote.push(&[&refspec], Some(&mut push_options))?;
+        remote.push(&[refspec], Some(&mut push_options))?;
     }
 
     if let Some(message) = push_failure {

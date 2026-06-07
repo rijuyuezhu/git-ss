@@ -27,6 +27,8 @@ pub enum CommandError {
     IncludeIgnoredRequiresWorkdir,
 }
 
+/// Implementation of `git-ss clean`.
+pub mod clean;
 /// Implementation of `git-ss download`.
 pub mod download;
 /// Implementation of `git-ss list`.

@@ -9,7 +9,8 @@ fn help_mentions_core_commands() {
         .success()
         .stdout(predicate::str::contains("upload"))
         .stdout(predicate::str::contains("list"))
-        .stdout(predicate::str::contains("download"));
+        .stdout(predicate::str::contains("download"))
+        .stdout(predicate::str::contains("clean"));
 }
 
 #[test]
@@ -51,6 +52,17 @@ fn download_requires_git_repository() {
     let mut cmd = Command::cargo_bin("git-ss").expect("binary exists");
     cmd.current_dir(temp.path())
         .args(["download", "20260528-153012"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not inside a Git repository"));
+}
+
+#[test]
+fn clean_requires_git_repository() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut cmd = Command::cargo_bin("git-ss").expect("binary exists");
+    cmd.current_dir(temp.path())
+        .arg("clean")
         .assert()
         .failure()
         .stderr(predicate::str::contains("not inside a Git repository"));
