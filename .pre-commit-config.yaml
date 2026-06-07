@@ -15,7 +15,7 @@ repos:
         always_run: true
       - id: cargo-doc
         name: cargo doc
-        entry: bash -c 'RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items'
+        entry: bash -c 'RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features --document-private-items'
         language: system
         pass_filenames: false
         always_run: true
