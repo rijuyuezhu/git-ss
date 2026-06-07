@@ -24,6 +24,8 @@ pub enum Command {
     List(ListArgs),
     /// Download a snapshot by id into a detached HEAD checkout.
     Download(DownloadArgs),
+    /// Delete all remote snapshot branches for a remote.
+    Clean(CleanArgs),
 }
 
 /// Arguments for `git-ss upload`.
@@ -101,4 +103,12 @@ pub struct DownloadArgs {
 
     /// Snapshot id to download from `refs/heads/gitss/<id>` on the remote.
     pub id: String,
+}
+
+/// Arguments for `git-ss clean`.
+#[derive(Debug, Args)]
+pub struct CleanArgs {
+    /// Remote to delete snapshot branches from.
+    #[arg(long, default_value = "origin")]
+    pub remote: String,
 }

@@ -12,6 +12,7 @@ fn main() -> anyhow::Result<()> {
         Command::Upload(args) => commands::upload::run(args),
         Command::List(args) => commands::list::run(args),
         Command::Download(args) => commands::download::run(args),
+        Command::Clean(args) => commands::clean::run(args),
     }?;
 
     Ok(())
