@@ -136,6 +136,14 @@ The command fetches `refs/heads/gitss/*` from the selected remote and prints an 
 
 For machine-readable output, pass `--format csv` or `--format json`. These formats print raw snapshot records with full commit ids, metadata fields, and numeric change stats.
 
+### Clean Snapshots
+
+```bash
+git ss clean
+```
+
+The command deletes all snapshot branches under `refs/heads/gitss/*` from the selected remote.
+
 ### Download a Snapshot
 
 ```bash
@@ -158,6 +166,7 @@ All commands default to `origin`. Use `--remote` to select another remote:
 git ss upload --remote fork --id demo HEAD
 git ss list --remote fork
 git ss download --remote fork demo
+git ss clean --remote fork
 ```
 
 ## Snapshot IDs
@@ -175,7 +184,6 @@ Custom ids may contain ASCII letters, digits, `.`, `_`, and `-`.
 - `git-ss` does not shell out to the `git` executable; Git operations are handled through libgit2.
 - Empty repositories are not supported yet because snapshots require a valid `HEAD` commit.
 - `download` intentionally leaves the repository in detached `HEAD` state at the snapshot commit.
-- Snapshot deletion is not implemented in the first version.
 - SSH and HTTPS remotes are supported through libgit2 credential callbacks; behavior may not match every credential flow supported by system Git.
 
 ## Development
