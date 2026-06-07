@@ -1,6 +1,7 @@
 //! Command handler for listing remote snapshot branches.
 
-use std::{cmp::Ordering, io, io::Write};
+use std::cmp::Ordering;
+use std::io::{self, Write};
 
 use chrono::{DateTime, FixedOffset, Local};
 use comfy_table::{
@@ -25,8 +26,7 @@ struct OutputSnapshot {
     remote_ref: String,
     commit: String,
     metadata_id: Option<String>,
-    #[serde(rename = "type")]
-    snapshot_type: Option<String>,
+    r#type: Option<String>,
     source: Option<String>,
     source_commit: Option<String>,
     created_at: Option<String>,
@@ -66,7 +66,7 @@ fn print_human(repo: &Repository, snapshots: Vec<ListedSnapshot>) {
     let mut table = Table::new();
     table
         .load_preset(UTF8_NO_BORDERS)
-        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_content_arrangement(ContentArrangement::DynamicFullWidth)
         .set_header(vec![
             "ID", "CREATED", "AGE", "TYPE", "SOURCE", "IGNORED", "BASE", "SNAPSHOT", "CHANGES",
         ]);
@@ -153,7 +153,7 @@ fn output_snapshots(repo: &Repository, snapshots: Vec<ListedSnapshot>) -> Vec<Ou
                         remote_ref: snapshot.remote_ref,
                         commit,
                         metadata_id: Some(metadata.id),
-                        snapshot_type: Some(snapshot_type),
+                        r#type: Some(snapshot_type),
                         source: Some(metadata.source),
                         source_commit: Some(metadata.source_commit),
                         created_at: Some(metadata.created_at.to_rfc3339()),
@@ -171,7 +171,7 @@ fn output_snapshots(repo: &Repository, snapshots: Vec<ListedSnapshot>) -> Vec<Ou
                     remote_ref: snapshot.remote_ref,
                     commit,
                     metadata_id: None,
-                    snapshot_type: None,
+                    r#type: None,
                     source: None,
                     source_commit: None,
                     created_at: None,
@@ -308,30 +308,21 @@ fn changes_summary(stats: Option<ChangeStats>) -> String {
 }
 
 fn change_stats(repo: &Repository, commit_id: Oid) -> Option<ChangeStats> {
-    let Ok(commit) = repo.find_commit(commit_id) else {
-        return None;
-    };
-    let Ok(parent) = commit.parent(0) else {
-        return None;
-    };
-    let Ok(parent_tree) = parent.tree() else {
-        return None;
-    };
-    let Ok(snapshot_tree) = commit.tree() else {
-        return None;
-    };
-    let Ok(diff) = repo.diff_tree_to_tree(Some(&parent_tree), Some(&snapshot_tree), None) else {
-        return None;
-    };
-    let Ok(stats) = diff.stats() else {
-        return None;
-    };
+    (|| -> std::result::Result<ChangeStats, git2::Error> {
+        let commit = repo.find_commit(commit_id)?;
+        let parent = commit.parent(0)?;
+        let parent_tree = parent.tree()?;
+        let snapshot_tree = commit.tree()?;
+        let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&snapshot_tree), None)?;
+        let stats = diff.stats()?;
 
-    Some(ChangeStats {
-        files_changed: stats.files_changed(),
-        insertions: stats.insertions(),
-        deletions: stats.deletions(),
-    })
+        Ok(ChangeStats {
+            files_changed: stats.files_changed(),
+            insertions: stats.insertions(),
+            deletions: stats.deletions(),
+        })
+    })()
+    .ok()
 }
 
 fn short_oid(oid: Oid) -> String {
