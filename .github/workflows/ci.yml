@@ -10,31 +10,42 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v') }}
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
 
 jobs:
   fmt:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
 
   clippy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -42,20 +53,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-targets --all-features
 
   docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       RUSTDOCFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo doc --no-deps --document-private-items
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps --all-features --document-private-items
 
   linux-release:
+    if: github.event_name != 'pull_request'
     name: linux release (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -78,25 +94,35 @@ jobs:
             packages: false
     steps:
       - uses: actions/checkout@v4
+
       - name: Install musl build tooling
         if: contains(matrix.target, 'musl')
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools pkg-config perl make
+
       - uses: actions/setup-go@v5
         if: matrix.packages
         with:
           go-version: stable
+
       - name: Install nFPM
         if: matrix.packages
         run: |
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
+
       - name: Test release binary
         run: |
           binary="target/${{ matrix.target }}/release/git-ss"
@@ -105,6 +131,7 @@ jobs:
           mkdir -p smoke-bin
           cp "$binary" smoke-bin/git-ss
           PATH="$PWD/smoke-bin:$PATH" git ss -h
+
       - name: Package release archive
         run: |
           binary="target/${{ matrix.target }}/release/git-ss"
@@ -114,6 +141,7 @@ jobs:
           cp "$binary" "$package_dir/git-ss"
           cp LICENSE README.md "$package_dir/"
           tar -czf "dist/git-ss-${{ matrix.target }}.tar.gz" -C archive "git-ss-${{ matrix.target }}"
+
       - name: Test install script
         if: contains(matrix.target, 'musl')
         run: |
@@ -122,6 +150,7 @@ jobs:
           install-test/bin/git-ss --version
           install-test/bin/git-ss --help
           rm dist/SHA256SUMS
+
       - name: Set package metadata
         if: matrix.packages
         run: |
@@ -134,6 +163,7 @@ jobs:
             echo "PACKAGE_VERSION=${package_version}"
             echo "PACKAGE_RELEASE=1"
           } >> "$GITHUB_ENV"
+
       - name: Package Linux installers
         if: matrix.packages
         env:
@@ -143,6 +173,7 @@ jobs:
           nfpm package --config nfpm.yaml --packager deb --target dist/
           nfpm package --config nfpm.yaml --packager rpm --target dist/
           nfpm package --config nfpm.yaml --packager archlinux --target dist/
+
       - name: Test deb package in Debian
         if: matrix.packages
         run: |
@@ -153,6 +184,7 @@ jobs:
             git-ss --help
             git ss -h
           '
+
       - name: Test rpm package in Fedora
         if: matrix.packages
         run: |
@@ -162,6 +194,7 @@ jobs:
             git-ss --help
             git ss -h
           '
+
       - name: Test Arch package in Arch Linux
         if: matrix.packages
         run: |
@@ -172,14 +205,19 @@ jobs:
             git-ss --help
             git ss -h
           '
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.target }}-release-artifacts
           path: dist/*
+          if-no-files-found: error
+          retention-days: 7
 
   macos-release:
+    if: github.event_name != 'pull_request'
     name: macOS release (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -192,13 +230,21 @@ jobs:
             uname: arm64
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
       - name: Verify native runner architecture
         run: test "$(uname -m)" = "${{ matrix.uname }}"
+
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
+
       - name: Test release binary
         run: |
           binary="target/${{ matrix.target }}/release/git-ss"
@@ -207,6 +253,7 @@ jobs:
           mkdir -p smoke-bin
           cp "$binary" smoke-bin/git-ss
           PATH="$PWD/smoke-bin:$PATH" git ss -h
+
       - name: Package release archive
         run: |
           binary="target/${{ matrix.target }}/release/git-ss"
@@ -216,14 +263,19 @@ jobs:
           cp "$binary" "$package_dir/git-ss"
           cp LICENSE README.md "$package_dir/"
           tar -czf "dist/git-ss-${{ matrix.target }}.tar.gz" -C archive "git-ss-${{ matrix.target }}"
+
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.target }}-release-artifacts
           path: dist/*
+          if-no-files-found: error
+          retention-days: 7
 
   windows-release:
+    if: github.event_name != 'pull_request'
     name: Windows release (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -234,13 +286,20 @@ jobs:
             runner: windows-11-arm
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
       - name: Build release binary
         run: cargo build --release --target $env:TARGET
         env:
           TARGET: ${{ matrix.target }}
+
       - name: Test release binary
         run: |
           $binary = "target\$env:TARGET\release\git-ss.exe"
@@ -251,6 +310,7 @@ jobs:
           git ss -h
         env:
           TARGET: ${{ matrix.target }}
+
       - name: Package release archive
         run: |
           $binary = "target\$env:TARGET\release\git-ss.exe"
@@ -262,31 +322,47 @@ jobs:
           Compress-Archive -Path "$packageDir\*" -DestinationPath "dist\git-ss-$env:TARGET.zip" -Force
         env:
           TARGET: ${{ matrix.target }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.target }}-release-artifacts
           path: dist/*
+          if-no-files-found: error
+          retention-days: 7
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [fmt, clippy, test, docs, linux-release, macos-release, windows-release]
+    needs:
+      [fmt, clippy, test, docs, linux-release, macos-release, windows-release]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-release-artifacts'
+          pattern: "*-release-artifacts"
           path: dist
           merge-multiple: true
+
       - name: Include installer script
         run: cp install.sh dist/install.sh
+
       - name: Generate checksums
         run: |
           cd dist
           rm -f SHA256SUMS
           sha256sum * > SHA256SUMS
+
+      - name: Generate artifact attestations
+        uses: actions/attest@v4
+        with:
+          subject-path: "dist/*"
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
@@ -296,13 +372,16 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'rijuyuezhu/git-ss'
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: linux-*-unknown-linux-musl-release-artifacts
           path: dist
           merge-multiple: true
+
       - name: Generate AUR PKGBUILD
         run: |
           package_version="${GITHUB_REF_NAME#v}"
@@ -317,6 +396,7 @@ jobs:
             line="${line//@LICENSE_SHA256@/${license_sha256}}"
             printf '%s\n' "$line"
           done < packaging/aur/PKGBUILD.template > dist/aur/PKGBUILD
+
       - name: Publish AUR package
         uses: KSXGitHub/github-actions-deploy-aur@v4.1.3
         with:
