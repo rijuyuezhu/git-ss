@@ -2,13 +2,10 @@
 
 use chrono::Local;
 
-use crate::{
-    cli::{UploadArgs, UploadTarget},
-    git::{SnapshotUpload, discover_repo, upload_ref_snapshot, upload_workdir_snapshot},
-    metadata::format_default_id,
-};
-
 use super::{CommandError, Result};
+use crate::cli::{UploadArgs, UploadTarget};
+use crate::git::{SnapshotUpload, discover_repo, upload_ref_snapshot, upload_workdir_snapshot};
+use crate::metadata::format_default_id;
 
 /// Uploads either an existing ref snapshot or a working-directory snapshot.
 pub fn run(args: UploadArgs) -> Result<()> {

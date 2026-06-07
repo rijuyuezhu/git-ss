@@ -92,7 +92,7 @@ pub fn discover_repo(start: &Path) -> Result<Repository, GitSsError> {
 }
 
 /// Resolves `HEAD` to a commit id, returning a git-ss empty-repository error for unborn heads.
-pub fn require_head(repo: &Repository) -> Result<git2::Oid, GitSsError> {
+pub fn resolve_head(repo: &Repository) -> Result<git2::Oid, GitSsError> {
     repo.head()
         .map_err(map_head_lookup)?
         .peel_to_commit()
@@ -148,7 +148,7 @@ pub fn upload_workdir_snapshot(
 
     let head_commit = repo.find_commit(head_id)?;
     let mut index = repo.index()?;
-    index.update_all(["*"].iter(), None)?;
+    index.update_all(["*"], None)?;
     let add_option = if input.include_ignored {
         IndexAddOption::FORCE
     } else {
@@ -185,7 +185,7 @@ fn prepare_snapshot_upload<'repo>(
     input: &SnapshotUpload<'_>,
 ) -> Result<(git2::Remote<'repo>, String, git2::Oid), GitSsError> {
     metadata::validate_id(input.id).map_err(|_| GitSsError::InvalidId(input.id.to_owned()))?;
-    let head_id = require_head(repo)?;
+    let head_id = resolve_head(repo)?;
 
     let mut remote = resolve_remote(repo, input.remote)?;
     let remote_ref = format!("refs/heads/gitss/{}", input.id);
@@ -241,7 +241,9 @@ pub fn list_snapshots(
     remote_name: &str,
 ) -> Result<Vec<ListedSnapshot>, GitSsError> {
     let mut remote = resolve_remote(repo, remote_name)?;
-    let refspec = format!("+refs/heads/gitss/*:refs/remotes/{remote_name}/gitss/*");
+    let remote_ref_pat = format!("refs/remotes/{remote_name}/gitss/*");
+    let local_ref_pat = "refs/heads/gitss/*";
+    let refspec = format!("+{local_ref_pat}:{remote_ref_pat}");
     let refspecs = [refspec.as_str()];
     let mut fetch_options = FetchOptions::new();
     fetch_options.remote_callbacks(remote_callbacks(repo)?);
@@ -251,7 +253,7 @@ pub fn list_snapshots(
 
     let prefix = format!("refs/remotes/{remote_name}/gitss/");
     let glob = format!("{prefix}*");
-    let mut snapshots = Vec::new();
+    let mut snapshots = vec![];
     for reference in repo.references_glob(&glob)? {
         let reference = reference?;
         let name = reference.name()?;
@@ -261,7 +263,9 @@ pub fn list_snapshots(
         let metadata = commit
             .message()
             .map_err(|err| err.to_string())
-            .and_then(|message| metadata::parse_metadata(message).map_err(|err| err.to_string()));
+            .and_then(|message| {
+                SnapshotMetadata::parse_from_message(message).map_err(|err| err.to_string())
+            });
 
         snapshots.push(ListedSnapshot {
             id,

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use assert_cmd::Command;
-use git_ss::git::{discover_repo, require_head, resolve_remote};
+use git_ss::git::{discover_repo, resolve_head, resolve_remote};
 use predicates::prelude::*;
 
 #[test]
@@ -38,7 +38,7 @@ fn require_head_reports_empty_repository() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo = git2::Repository::init(temp.path()).expect("repo init");
 
-    let err = expect_err(require_head(&repo), "head should be unborn");
+    let err = expect_err(resolve_head(&repo), "head should be unborn");
 
     assert!(
         err.to_string()
@@ -59,7 +59,7 @@ fn require_head_preserves_missing_head_target_error() {
     .expect("bad ref");
     repo.set_head("refs/heads/main").expect("set head");
 
-    let err = expect_err(require_head(&repo), "head target is missing");
+    let err = expect_err(resolve_head(&repo), "head target is missing");
 
     assert!(
         !err.to_string()

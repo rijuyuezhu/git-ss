@@ -1,7 +1,5 @@
 use chrono::{FixedOffset, TimeZone};
-use git_ss::metadata::{
-    SnapshotMetadata, UploadKind, format_default_id, parse_metadata, validate_id,
-};
+use git_ss::metadata::{SnapshotMetadata, UploadKind, format_default_id, validate_id};
 
 #[test]
 fn formats_default_id_as_local_date_time() {
@@ -42,7 +40,8 @@ fn renders_and_parses_workdir_metadata() {
     assert!(message.contains("Git-SS-Id: 20260528-153012"));
     assert!(message.contains("Git-SS-Type: workdir"));
 
-    let parsed = parse_metadata(&message).expect("metadata parses");
+    let parsed = SnapshotMetadata::parse_from_message(&message).expect("metadata parses");
+
     assert_eq!(parsed.id, metadata.id);
     assert_eq!(parsed.kind, metadata.kind);
     assert_eq!(parsed.source, metadata.source);

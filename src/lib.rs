@@ -1,11 +1,9 @@
 #![warn(missing_docs)]
 
-//! Library components for the `git-ss` command-line tool.
+//! Library components for the `git-ss` command-line tool, a Git plugin for sharing temporary snapshot branches.
 //!
 //! The crate is organized so CLI parsing, command orchestration, snapshot
 //! metadata handling, and libgit2-backed Git operations remain separate.
-//! External users normally invoke the `git-ss` binary, but these modules are
-//! documented to make the command behavior and Git boundary easier to inspect.
 
 /// Command-line argument types parsed by `clap`.
 pub mod cli;

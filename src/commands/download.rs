@@ -1,11 +1,8 @@
 //! Command handler for downloading snapshot branches.
 
-use crate::{
-    cli::DownloadArgs,
-    git::{discover_repo, download_snapshot},
-};
-
 use super::Result;
+use crate::cli::DownloadArgs;
+use crate::git::{discover_repo, download_snapshot};
 
 /// Downloads a snapshot and checks it out as a detached HEAD.
 pub fn run(args: DownloadArgs) -> Result<()> {

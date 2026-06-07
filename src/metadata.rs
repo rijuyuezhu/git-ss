@@ -89,62 +89,71 @@ impl SnapshotMetadata {
     /// Renders metadata as a snapshot commit message.
     pub fn to_commit_message(&self) -> String {
         format!(
-            "git-ss snapshot\n\nGit-SS-Id: {}\nGit-SS-Type: {}\nGit-SS-Source: {}\nGit-SS-Source-Commit: {}\nGit-SS-Created-At: {}\nGit-SS-Remote: {}\nGit-SS-Include-Ignored: {}\nGit-SS-Tool-Version: {}\n",
-            self.id,
-            self.kind.as_str(),
-            self.source,
-            self.source_commit,
-            self.created_at.to_rfc3339(),
-            self.remote,
-            self.include_ignored,
-            self.tool_version
+            "\
+git-ss snapshot
+
+Git-SS-Id: {id}
+Git-SS-Type: {type}
+Git-SS-Source: {source}
+Git-SS-Source-Commit: {source_commit}
+Git-SS-Created-At: {created_at}
+Git-SS-Remote: {remote}
+Git-SS-Include-Ignored: {include_ignored}
+Git-SS-Tool-Version: {tool_version}\n",
+            id = self.id,
+            type = self.kind.as_str(),
+            source = self.source,
+            source_commit = self.source_commit,
+            created_at = self.created_at.to_rfc3339(),
+            remote = self.remote,
+            include_ignored = self.include_ignored,
+            tool_version = self.tool_version
         )
     }
-}
+    /// Parses a snapshot commit message back into structured metadata.
+    pub fn parse_from_message(message: &str) -> Result<Self, MetadataError> {
+        let id = field(message, "Git-SS-Id")?.to_string();
+        validate_id(&id)?;
 
-/// Parses a snapshot commit message back into structured metadata.
-pub fn parse_metadata(message: &str) -> Result<SnapshotMetadata, MetadataError> {
-    let id = field(message, "Git-SS-Id")?.to_string();
-    validate_id(&id)?;
+        let kind = match field(message, "Git-SS-Type")? {
+            "workdir" => UploadKind::Workdir,
+            "ref" => UploadKind::Ref,
+            value => {
+                return Err(MetadataError::InvalidField {
+                    field: "Git-SS-Type",
+                    value: value.to_string(),
+                });
+            }
+        };
 
-    let kind = match field(message, "Git-SS-Type")? {
-        "workdir" => UploadKind::Workdir,
-        "ref" => UploadKind::Ref,
-        value => {
-            return Err(MetadataError::InvalidField {
-                field: "Git-SS-Type",
-                value: value.to_string(),
-            });
-        }
-    };
+        let created_at_value = field(message, "Git-SS-Created-At")?;
+        let created_at = DateTime::parse_from_rfc3339(created_at_value).map_err(|_| {
+            MetadataError::InvalidField {
+                field: "Git-SS-Created-At",
+                value: created_at_value.to_string(),
+            }
+        })?;
 
-    let created_at_value = field(message, "Git-SS-Created-At")?;
-    let created_at = DateTime::parse_from_rfc3339(created_at_value).map_err(|_| {
-        MetadataError::InvalidField {
-            field: "Git-SS-Created-At",
-            value: created_at_value.to_string(),
-        }
-    })?;
+        let include_ignored_value = field(message, "Git-SS-Include-Ignored")?;
+        let include_ignored =
+            include_ignored_value
+                .parse::<bool>()
+                .map_err(|_| MetadataError::InvalidField {
+                    field: "Git-SS-Include-Ignored",
+                    value: include_ignored_value.to_string(),
+                })?;
 
-    let include_ignored_value = field(message, "Git-SS-Include-Ignored")?;
-    let include_ignored =
-        include_ignored_value
-            .parse::<bool>()
-            .map_err(|_| MetadataError::InvalidField {
-                field: "Git-SS-Include-Ignored",
-                value: include_ignored_value.to_string(),
-            })?;
-
-    Ok(SnapshotMetadata {
-        id,
-        kind,
-        source: field(message, "Git-SS-Source")?.to_string(),
-        source_commit: field(message, "Git-SS-Source-Commit")?.to_string(),
-        created_at,
-        remote: field(message, "Git-SS-Remote")?.to_string(),
-        include_ignored,
-        tool_version: field(message, "Git-SS-Tool-Version")?.to_string(),
-    })
+        Ok(Self {
+            id,
+            kind,
+            source: field(message, "Git-SS-Source")?.to_string(),
+            source_commit: field(message, "Git-SS-Source-Commit")?.to_string(),
+            created_at,
+            remote: field(message, "Git-SS-Remote")?.to_string(),
+            include_ignored,
+            tool_version: field(message, "Git-SS-Tool-Version")?.to_string(),
+        })
+    }
 }
 
 /// Finds and returns a single metadata field value from a commit message.

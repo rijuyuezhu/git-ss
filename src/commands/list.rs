@@ -1,19 +1,18 @@
 //! Command handler for listing remote snapshot branches.
 
-use crate::{
-    cli::{ListArgs, ListFormat},
-    git::{ListedSnapshot, discover_repo, list_snapshots},
-    metadata::UploadKind,
-};
+use std::{cmp::Ordering, io, io::Write};
+
 use chrono::{DateTime, FixedOffset, Local};
 use comfy_table::{
     Cell, ColumnConstraint, ContentArrangement, Table, Width, presets::UTF8_NO_BORDERS,
 };
 use git2::{Oid, Repository};
 use serde::Serialize;
-use std::{cmp::Ordering, io, io::Write};
 
 use super::Result;
+use crate::cli::{ListArgs, ListFormat};
+use crate::git::{ListedSnapshot, discover_repo, list_snapshots};
+use crate::metadata::UploadKind;
 
 const ID_COLUMN: usize = 0;
 const SOURCE_COLUMN: usize = 4;
